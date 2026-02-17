@@ -3,6 +3,7 @@ import Link from "next/link"
 import PageContainer from "../PageContainer"
 import { fetchDashboardSummary } from "./actions"
 import { CheckCircle2, Clock, AlertTriangle, TrendingDown, MoreVertical, Download } from "lucide-react"
+import FiltersBar from "./FiltersBar"
 
 function badgeClass(v: string) {
   const s = (v || "").toLowerCase()
@@ -110,7 +111,7 @@ export default async function Page({
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
             <div>
               <h1 className="text-2xl font-semibold">Dashboard</h1>
-              <p className="text-sm text-slate-500">Visão geral por tenant — filtrável por framework e período.</p>
+              <p className="text-sm text-slate-500">Visão geral</p>
             </div>
 
             <div className="no-print flex items-center gap-2">
@@ -126,68 +127,16 @@ export default async function Page({
             </div>
           </div>
 
-          {/* filtros (GET) */}
-          <form method="GET" action="/dashboard" className="no-print bg-white border border-slate-200 rounded-xl p-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Framework</label>
-                <select
-                  name="frameworkId"
-                  defaultValue={frameworkId ?? ""}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">Todos</option>
-                  {data.filters.frameworks.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Mês</label>
-                <select
-                  name="month"
-                  defaultValue={String(month)}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  {months.map((m) => (
-                    <option key={m.v} value={m.v}>
-                      {m.l}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Ano</label>
-                <select
-                  name="year"
-                  defaultValue={String(year)}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  {Array.from({ length: 6 }).map((_, i) => {
-                    const y = new Date().getFullYear() - 2 + i
-                    return (
-                      <option key={y} value={y}>
-                        {y}
-                      </option>
-                    )
-                  })}
-                </select>
-              </div>
-
-              <div className="flex items-end md:justify-end">
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium hover:opacity-95 transition whitespace-nowrap"
-                >
-                  Aplicar filtros
-                </button>
-              </div>
-            </div>
-          </form>
+          {/* ✅ filtros auto-aplicáveis (client) */}
+          <FiltersBar
+            frameworks={data.filters.frameworks}
+            months={months}
+            value={{
+              frameworkId: frameworkId ?? "",
+              month: String(month),
+              year: String(year),
+            }}
+          />
         </div>
 
         {/* Cards */}
@@ -234,7 +183,7 @@ export default async function Page({
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
             <div>
               <h2 className="text-lg font-semibold">Desempenho de Execução</h2>
-              <p className="text-sm text-slate-500">% in_target por mês (últimos 6 meses)</p>
+              <p className="text-sm text-slate-500">Histórico de conformidade nos (últimos 6 meses)</p>
             </div>
             <div className="text-xs text-slate-500">
               <span className="font-semibold">{frameworkName}</span> • {String(month).padStart(2, "0")}/{year}
@@ -375,7 +324,7 @@ export default async function Page({
           <div className="px-4 py-3 border-b bg-slate-50 flex items-center justify-between">
             <div>
               <div className="text-sm font-medium">Planos de ação vencendo em até 7 dias</div>
-              <div className="text-xs text-slate-500">status != done e due_date até hoje + 7</div>
+              <div className="text-xs text-slate-500"></div>
             </div>
             <Link href="/action-plans" className="text-sm underline">
               Ver todos

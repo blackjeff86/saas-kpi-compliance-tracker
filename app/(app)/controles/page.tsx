@@ -5,7 +5,7 @@ import { fetchControlsPage } from "./actions"
 import {
   Search,
   SlidersHorizontal,
-  Download,
+  UploadCloud,
   Plus,
   ChevronLeft,
   ChevronRight,
@@ -72,10 +72,10 @@ export default async function ControlesPage({
           right={
             <>
               <Link
-                href="/controles/importar"
+                href="/controles/import"
                 className="inline-flex items-center gap-2 px-4 py-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 rounded-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-sm"
               >
-                <Download className="w-4 h-4" />
+                <UploadCloud className="w-4 h-4" />
                 Importar CSV
               </Link>
 
