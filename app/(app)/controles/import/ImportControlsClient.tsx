@@ -25,8 +25,11 @@ type ImportRow = {
   control_status?: string
   control_frequency?: string
   control_type?: string
+
   control_owner_email?: string
+  control_owner_name?: string // ✅ NOVO
   focal_point_email?: string
+  focal_point_name?: string // ✅ NOVO
 
   risk_code?: string
   risk_name?: string
@@ -96,9 +99,23 @@ function normalizeKey(k: string): keyof ImportRow | null {
     owner: "control_owner_email",
     owner_email: "control_owner_email",
 
+    // ✅ NOVO: owner name
+    control_owner_name: "control_owner_name",
+    owner_name: "control_owner_name",
+    "nome owner": "control_owner_name",
+    "nome do owner": "control_owner_name",
+    "control owner name": "control_owner_name",
+
     focal_point_email: "focal_point_email",
     focal: "focal_point_email",
     focal_email: "focal_point_email",
+
+    // ✅ NOVO: focal name
+    focal_point_name: "focal_point_name",
+    focal_name: "focal_point_name",
+    "nome focal": "focal_point_name",
+    "nome do focal": "focal_point_name",
+    "focal point name": "focal_point_name",
 
     // risk
     risk_code: "risk_code",
@@ -159,7 +176,9 @@ function buildTemplateCsv() {
     "control_frequency",
     "control_type",
     "control_owner_email",
+    "control_owner_name", // ✅ NOVO
     "focal_point_email",
+    "focal_point_name", // ✅ NOVO
     "risk_code",
     "risk_name",
     "risk_description",
@@ -180,7 +199,9 @@ function buildTemplateCsv() {
       "Mensal",
       "Preventivo",
       "grc@empresa.com",
+      "Time GRC",
       "securityops@empresa.com",
+      "Security Ops",
       "ISO27001-RISK-001",
       "Erro humano e phishing",
       "Risco de incidentes por baixa conscientização e comportamento inseguro",
@@ -199,7 +220,9 @@ function buildTemplateCsv() {
       "Mensal",
       "Preventivo",
       "grc@empresa.com",
+      "Time GRC",
       "securityops@empresa.com",
+      "Security Ops",
       "ISO27001-RISK-001",
       "Erro humano e phishing",
       "Risco de incidentes por baixa conscientização e comportamento inseguro",
@@ -280,7 +303,6 @@ export default function ImportControlsClient() {
       header: true,
       skipEmptyLines: true,
       dynamicTyping: false,
-      // ajuda quando o CSV vem com delimitador diferente
       delimitersToGuess: [",", ";", "\t", "|"],
       complete: (res) => {
         try {
@@ -291,11 +313,10 @@ export default function ImportControlsClient() {
 
             Object.keys(raw || {}).forEach((k) => {
               const nk = normalizeKey(k)
-              if (!nk) return // ignora coluna desconhecida
+              if (!nk) return
               out[nk] = norm(raw[k])
             })
 
-            // garante o shape completo (com defaults)
             return {
               framework: out.framework || "",
               control_code: out.control_code || "",
@@ -304,8 +325,11 @@ export default function ImportControlsClient() {
               control_status: out.control_status,
               control_frequency: out.control_frequency,
               control_type: out.control_type,
+
               control_owner_email: out.control_owner_email,
+              control_owner_name: out.control_owner_name, // ✅ NOVO
               focal_point_email: out.focal_point_email,
+              focal_point_name: out.focal_point_name, // ✅ NOVO
 
               risk_code: out.risk_code,
               risk_name: out.risk_name,
@@ -319,7 +343,6 @@ export default function ImportControlsClient() {
             }
           })
 
-          // precisa existir pelo menos 1 linha com todos os required preenchidos
           const hasAnyRequired = mapped.some((r) => REQUIRED_KEYS.every((k) => norm((r as any)[k])))
           if (!hasAnyRequired) {
             setParseError("Não consegui identificar as colunas do template. Baixe o Template e tente novamente.")
@@ -344,7 +367,6 @@ export default function ImportControlsClient() {
     setResultMsg("")
     setParseError("")
 
-    // ✅ manda undefined nos vazios (melhor para o server)
     const payload: ImportRow[] = rows.map((r) => ({
       framework: norm(r.framework),
       control_code: norm(r.control_code),
@@ -354,8 +376,11 @@ export default function ImportControlsClient() {
       control_status: emptyToUndef(r.control_status),
       control_frequency: emptyToUndef(r.control_frequency),
       control_type: emptyToUndef(r.control_type),
+
       control_owner_email: emptyToUndef(r.control_owner_email),
+      control_owner_name: emptyToUndef(r.control_owner_name), // ✅ NOVO
       focal_point_email: emptyToUndef(r.focal_point_email),
+      focal_point_name: emptyToUndef(r.focal_point_name), // ✅ NOVO
 
       risk_code: emptyToUndef(r.risk_code),
       risk_name: emptyToUndef(r.risk_name),
@@ -507,6 +532,9 @@ export default function ImportControlsClient() {
             <p className="text-sm text-slate-600 mb-4 leading-relaxed">
               Use o template para importar controles + riscos + KPIs. Você pode repetir o mesmo <b>control_code</b> em várias
               linhas para criar KPIs diferentes sem duplicar o controle.
+              <br />
+              <br />
+              ✅ Agora também aceitamos <b>control_owner_name</b> e <b>focal_point_name</b> no CSV.
             </p>
 
             <button
@@ -574,7 +602,7 @@ export default function ImportControlsClient() {
                 <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider w-10">#</th>
                 <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Controle</th>
                 <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Framework</th>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Risco</th>
+                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Owner / Focal</th>
                 <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">KPI</th>
                 <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">
                   Validação
@@ -598,7 +626,16 @@ export default function ImportControlsClient() {
                       <div className="text-xs text-slate-500">{row.control_name || "—"}</div>
                     </td>
                     <td className="px-6 py-3 text-sm text-slate-700">{row.framework || "—"}</td>
-                    <td className="px-6 py-3 text-sm text-slate-700">{row.risk_code || "—"}</td>
+                    <td className="px-6 py-3 text-sm text-slate-700">
+                      <div className="text-xs">
+                        <span className="font-semibold">Owner:</span>{" "}
+                        {row.control_owner_name || row.control_owner_email || "—"}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        <span className="font-semibold text-slate-600">Focal:</span>{" "}
+                        {row.focal_point_name || row.focal_point_email || "—"}
+                      </div>
+                    </td>
                     <td className="px-6 py-3 text-sm text-slate-700">{row.kpi_code || "—"}</td>
                     <td className="px-6 py-3 text-right">
                       {v.ok ? (

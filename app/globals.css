@@ -218,3 +218,28 @@
     background-color: rgba(30, 58, 138, 0.10) !important;
   }
 }
+
+:root {
+  /* Brand palette */
+  --brand-1: #333b74; /* color1 */
+  --brand-2: #a2a9d6; /* color2 */
+  --brand-3: #2c346c; /* color3 */
+  --brand-4: #5c6494; /* color4 */
+  --brand-5: #b0b3c8; /* color5 */
+  --highlight: #F71866;
+
+  /* usa brand-1 como primary */
+  --primary: var(--brand-1);
+  --primary-foreground: #ffffff;
+
+  /* deixa accent com highlight (onde shadcn usa accent) */
+  --accent: color-mix(in oklab, var(--highlight) 12%, white);
+  --accent-foreground: #111827;
+
+  /* ring um pouco mais “vivo” */
+  --ring: color-mix(in oklab, var(--highlight) 35%, #94a3b8);
+}
+
+::selection {
+  background: color-mix(in oklab, var(--highlight) 25%, white);
+}

@@ -42,9 +42,32 @@ function kpiStatusBadge(v?: string | null) {
     return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
   if (s.includes("warning") || s.includes("warn"))
     return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-  if (s.includes("out_of_target") || s.includes("out of target") || s.includes("critical"))
+  // ✅ ajuste: no seu banco o enum é "out" (não "out_of_target")
+  if (s === "out" || s.includes("out_of_target") || s.includes("out of target") || s.includes("critical"))
     return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
   return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"
+}
+
+function controlPeriodBadge(v?: string | null) {
+  const s = (v || "").toLowerCase()
+  if (s === "effective")
+    return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+  if (s === "gap")
+    return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+  if (s === "out_of_standard")
+    return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+  if (s === "not_executed")
+    return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"
+  return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"
+}
+
+function controlPeriodLabel(v?: string | null) {
+  const s = (v || "").toLowerCase()
+  if (s === "effective") return "EFFECTIVE"
+  if (s === "gap") return "GAP"
+  if (s === "out_of_standard") return "OUT"
+  if (s === "not_executed") return "NOT EXECUTED"
+  return (v || "—").toUpperCase()
 }
 
 function formatTarget(op?: string | null, val?: number | null) {
@@ -65,6 +88,14 @@ function initials(name?: string | null) {
   return parts.map((p) => p[0]?.toUpperCase()).join("")
 }
 
+function formatPeriodLabel(periodEnd?: string | null) {
+  if (!periodEnd) return "—"
+  // esperado: YYYY-MM-DD
+  const [y, m, d] = periodEnd.split("-")
+  if (!y || !m || !d) return periodEnd
+  return `${d}/${m}/${y}`
+}
+
 export default async function ControleDetailPage({
   params,
   searchParams,
@@ -76,19 +107,23 @@ export default async function ControleDetailPage({
   const sp = (await searchParams) ?? {}
   const tab = (pickFirst(sp.tab) ?? "kpis").toLowerCase()
 
+  // ✅ novo: período opcional via querystring (?period=YYYY-MM-DD)
+  const period = pickFirst(sp.period) ?? null
+
   let data: Awaited<ReturnType<typeof fetchControlById>> | null = null
   try {
-    data = await fetchControlById(id)
+    // ✅ chama com o período (se vier). Se não vier, a action usa o último período existente.
+    data = await fetchControlById(id, period)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     if (msg.toLowerCase().includes("não existe") || msg.toLowerCase().includes("tenant")) return notFound()
     throw err
   }
 
-  const { control, kpis } = data
+  const { control, kpis, period_end_used, control_period_status } = data
 
   const actionPlans: ActionPlanRow[] = []
-  const tabHref = (next: string) => `/controles/${control.id}?tab=${next}`
+  const tabHref = (next: string) => `/controles/${control.id}?tab=${next}${period_end_used ? `&period=${period_end_used}` : ""}`
 
   const controlOwnerName: string | null = null
   const focalPointName: string | null = null
@@ -103,6 +138,22 @@ export default async function ControleDetailPage({
               <span className="text-sm text-slate-500 font-mono">{control.control_code}</span>
               <span className={`px-3 py-1 text-xs font-bold rounded-full ${riskBadge(control.risk_level)}`}>
                 {(control.risk_level || "risco não definido").toUpperCase()}
+              </span>
+
+              {/* ✅ novo: status agregado do controle no período */}
+              <span
+                className={`px-3 py-1 text-xs font-bold rounded-full ${controlPeriodBadge(control_period_status)}`}
+                title="Status agregado do controle no período"
+              >
+                {controlPeriodLabel(control_period_status)}
+              </span>
+
+              {/* ✅ novo: período usado */}
+              <span
+                className="px-3 py-1 text-xs font-semibold rounded-full bg-slate-100 text-slate-700 border border-slate-200"
+                title="Período de referência (period_end) usado para os KPIs"
+              >
+                PERÍODO: {formatPeriodLabel(period_end_used)}
               </span>
             </div>
           }
@@ -133,7 +184,7 @@ export default async function ControleDetailPage({
           <div className="lg:col-span-7 space-y-6">
             {/* Summary card */}
             <div className="bg-white border border-slate-200 rounded-xl p-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <div className="flex flex-col gap-2">
                   <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Control Owner</span>
                   <div className="flex items-center gap-3">
@@ -161,6 +212,20 @@ export default async function ControleDetailPage({
                     <span className="text-sm font-medium text-slate-700">{control.frequency ?? "—"}</span>
                   </div>
                 </div>
+
+                {/* ✅ novo: período no summary */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Período</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <CalendarDays className="w-4 h-4 text-slate-400" />
+                    <span className="text-sm font-medium text-slate-700">{formatPeriodLabel(period_end_used)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ✅ dica/UX simples (sem virar form agora) */}
+              <div className="mt-4 text-xs text-slate-400">
+                Dica: você pode abrir este detalhe com <span className="font-mono">?period=YYYY-MM-DD</span> para ver o status dos KPIs naquele mês.
               </div>
             </div>
 
@@ -204,8 +269,8 @@ export default async function ControleDetailPage({
                         <tr className="bg-slate-50 border-b border-slate-100">
                           <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Nome do KPI</th>
                           <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Meta</th>
-                          <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Último Resultado</th>
-                          <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                          <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Resultado (período)</th>
+                          <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Status (período)</th>
                         </tr>
                       </thead>
 
@@ -215,7 +280,7 @@ export default async function ControleDetailPage({
                             <td colSpan={4} className="px-4 py-8">
                               <div className="text-sm text-slate-500">Nenhum KPI associado a este controle ainda.</div>
                               <div className="text-xs text-slate-400 mt-1">
-                                Quando você tiver execuções/KPIs vinculados, eles aparecem aqui.
+                                Quando você vincular KPIs ao controle, eles aparecem aqui (independente de haver execução).
                               </div>
                             </td>
                           </tr>
@@ -236,6 +301,7 @@ export default async function ControleDetailPage({
                                   className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold uppercase ${kpiStatusBadge(
                                     k.last_auto_status
                                   )}`}
+                                  title={k.last_period_end ? `period_end=${k.last_period_end}` : "sem execução no período"}
                                 >
                                   {k.last_auto_status ?? "—"}
                                 </span>

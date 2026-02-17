@@ -1,7 +1,12 @@
+// app/(app)/controles/actions.ts
 "use server"
 
 import { sql } from "@vercel/postgres"
 import { getContext } from "../lib/context"
+
+// =============================
+// TYPES
+// =============================
 
 export type ControlRow = {
   id: string
@@ -11,45 +16,220 @@ export type ControlRow = {
   frequency: string | null
   risk_level: string | null
   created_at: string
+
+  // ✅ mês referência (YYYY-MM) - usado para cálculo do status do mês (execuções)
+  mes_ref: string | null
+
+  // ✅ Opção A: vem da própria tabela controls
+  control_owner_name: string | null
+  control_owner_email: string | null
+  focal_point_name: string | null
+  focal_point_email: string | null
+
+  // ✅ NOVO (status do controle no mês, baseado no pior auto_status dos KPIs)
+  control_result: string | null // ok | warning | gap | no-data
 }
 
 export type FetchControlsInput = {
   q?: string
   limit?: number
   offset?: number
+
+  mes_ref?: string // YYYY-MM (dropdown)
+  framework?: string
+  frequency?: string
+  risk?: string
+  owner?: string // nome OU email
+  focal?: string // nome OU email
 }
+
+// =============================
+// FILTER OPTIONS (dropdowns)
+// =============================
+
+export async function fetchControlsFilterOptions(): Promise<{
+  months: string[]
+  frameworks: string[]
+  frequencies: string[]
+  risks: string[]
+  owners: { name: string; email: string }[]
+  focals: { name: string; email: string }[]
+}> {
+  const ctx = await getContext()
+
+  const [months, fw, fr, rk, owners, focals] = await Promise.all([
+    // ✅ meses reais vêm das execuções (period_start)
+    sql<{ v: string }>`
+      SELECT DISTINCT to_char(date_trunc('month', ke.period_start)::date, 'YYYY-MM') AS v
+      FROM kpi_executions ke
+      WHERE ke.tenant_id = ${ctx.tenantId}
+        AND ke.period_start IS NOT NULL
+      ORDER BY v DESC
+    `,
+    sql<{ name: string }>`
+      SELECT DISTINCT f.name
+      FROM frameworks f
+      WHERE f.tenant_id = ${ctx.tenantId}
+        AND f.name IS NOT NULL
+        AND btrim(f.name) <> ''
+      ORDER BY f.name
+    `,
+    sql<{ v: string }>`
+      SELECT DISTINCT c.frequency::text AS v
+      FROM controls c
+      WHERE c.tenant_id = ${ctx.tenantId}
+        AND c.frequency IS NOT NULL
+      ORDER BY v
+    `,
+    sql<{ v: string }>`
+      SELECT DISTINCT r.classification::text AS v
+      FROM controls c
+      LEFT JOIN risk_catalog r ON r.id = c.risk_id
+      WHERE c.tenant_id = ${ctx.tenantId}
+        AND r.classification IS NOT NULL
+      ORDER BY v
+    `,
+    sql<{ name: string; email: string }>`
+      SELECT DISTINCT
+        COALESCE(NULLIF(btrim(c.control_owner_name), ''), '—')::text AS name,
+        COALESCE(NULLIF(btrim(c.control_owner_email), ''), '—')::text AS email
+      FROM controls c
+      WHERE c.tenant_id = ${ctx.tenantId}
+        AND (
+          COALESCE(NULLIF(btrim(c.control_owner_name), ''), NULL) IS NOT NULL
+          OR COALESCE(NULLIF(btrim(c.control_owner_email), ''), NULL) IS NOT NULL
+        )
+      ORDER BY name, email
+    `,
+    sql<{ name: string; email: string }>`
+      SELECT DISTINCT
+        COALESCE(NULLIF(btrim(c.focal_point_name), ''), '—')::text AS name,
+        COALESCE(NULLIF(btrim(c.focal_point_email), ''), '—')::text AS email
+      FROM controls c
+      WHERE c.tenant_id = ${ctx.tenantId}
+        AND (
+          COALESCE(NULLIF(btrim(c.focal_point_name), ''), NULL) IS NOT NULL
+          OR COALESCE(NULLIF(btrim(c.focal_point_email), ''), NULL) IS NOT NULL
+        )
+      ORDER BY name, email
+    `,
+  ])
+
+  return {
+    months: months.rows.map((r) => r.v),
+    frameworks: fw.rows.map((r) => r.name),
+    frequencies: fr.rows.map((r) => r.v),
+    risks: rk.rows.map((r) => r.v),
+    owners: owners.rows
+      .filter((r) => r.name !== "—" || r.email !== "—")
+      .map((r) => ({ name: r.name, email: r.email })),
+    focals: focals.rows
+      .filter((r) => r.name !== "—" || r.email !== "—")
+      .map((r) => ({ name: r.name, email: r.email })),
+  }
+}
+
+// =============================
+// LISTAGEM / FILTROS (ETAPA 2)
+// - mes_ref agora controla o "mês do cálculo do status"
+// - control_result = pior auto_status entre os KPIs do controle no mês
+// =============================
 
 export async function fetchControlsPage(
   input: FetchControlsInput = {}
-): Promise<{
-  rows: ControlRow[]
-  total: number
-}> {
+): Promise<{ rows: ControlRow[]; total: number }> {
   const ctx = await getContext()
 
   const qRaw = (input.q ?? "").trim()
   const q = qRaw.length ? `%${qRaw}%` : null
 
+  // ✅ mes_ref serve para calcular status do mês (execuções)
+  const mes_ref = (input.mes_ref ?? "").trim() // YYYY-MM
+  const framework = (input.framework ?? "").trim()
+  const frequency = (input.frequency ?? "").trim()
+  const risk = (input.risk ?? "").trim()
+  const owner = (input.owner ?? "").trim()
+  const focal = (input.focal ?? "").trim()
+
   const limit = Math.max(1, Math.min(100, input.limit ?? 10))
   const offset = Math.max(0, input.offset ?? 0)
 
-  // total
+  // total (mes_ref NÃO filtra controls; apenas afeta cálculo de resultado)
   const totalRes = await sql<{ total: number }>`
     SELECT COUNT(*)::int AS total
     FROM controls c
     LEFT JOIN frameworks f ON f.id = c.framework_id
+    LEFT JOIN risk_catalog r ON r.id = c.risk_id
     WHERE c.tenant_id = ${ctx.tenantId}
+
       AND (
         ${q}::text IS NULL
         OR c.name ILIKE ${q}
         OR c.control_code ILIKE ${q}
-        OR f.name ILIKE ${q}
+        OR COALESCE(f.name, '') ILIKE ${q}
+        OR COALESCE(c.control_owner_name, '') ILIKE ${q}
+        OR COALESCE(c.control_owner_email, '') ILIKE ${q}
+        OR COALESCE(c.focal_point_name, '') ILIKE ${q}
+        OR COALESCE(c.focal_point_email, '') ILIKE ${q}
+      )
+
+      AND (${framework} = '' OR COALESCE(f.name, '') = ${framework})
+      AND (${frequency} = '' OR COALESCE(c.frequency::text, '') = ${frequency})
+      AND (${risk} = '' OR COALESCE(r.classification::text, '') = ${risk})
+
+      AND (
+        ${owner} = ''
+        OR lower(COALESCE(c.control_owner_email::text, '')) = lower(${owner})
+        OR lower(COALESCE(c.control_owner_name::text, '')) = lower(${owner})
+      )
+
+      AND (
+        ${focal} = ''
+        OR lower(COALESCE(c.focal_point_email::text, '')) = lower(${focal})
+        OR lower(COALESCE(c.focal_point_name::text, '')) = lower(${focal})
       )
   `
   const total = totalRes.rows?.[0]?.total ?? 0
 
   // page
-  const { rows } = await sql<ControlRow>`
+  const pageRes = await sql<ControlRow>`
+    WITH selected_month AS (
+      SELECT
+        CASE
+          WHEN ${mes_ref} = '' THEN date_trunc('month', now())::date
+          ELSE to_date(${mes_ref} || '-01', 'YYYY-MM-DD')
+        END AS m
+    ),
+    latest_exec_in_month AS (
+      -- pega a ÚLTIMA execução de cada KPI dentro do mês selecionado
+      SELECT DISTINCT ON (ke.kpi_id)
+        ke.kpi_id,
+        ke.auto_status::text AS auto_status
+      FROM kpi_executions ke
+      CROSS JOIN selected_month sm
+      WHERE ke.tenant_id = ${ctx.tenantId}
+        AND ke.period_start IS NOT NULL
+        AND date_trunc('month', ke.period_start)::date = sm.m
+      ORDER BY ke.kpi_id, ke.period_start DESC, ke.created_at DESC
+    ),
+    control_worst AS (
+      SELECT
+        c.id AS control_id,
+        MAX(
+          CASE
+            -- ✅ ajuste aqui se seu enum tiver outros valores
+            WHEN lower(COALESCE(le.auto_status, '')) IN ('red', 'gap', 'critical', 'high', 'fail', 'failed', 'ineffective', 'inefetivo') THEN 3
+            WHEN lower(COALESCE(le.auto_status, '')) IN ('yellow', 'warning', 'warn', 'medium', 'moderate') THEN 2
+            WHEN lower(COALESCE(le.auto_status, '')) IN ('green', 'ok', 'pass', 'passed', 'success', 'effective', 'efetivo') THEN 1
+            ELSE 0
+          END
+        ) AS worst_sev
+      FROM controls c
+      LEFT JOIN kpis k ON k.control_id = c.id AND k.tenant_id = ${ctx.tenantId}
+      LEFT JOIN latest_exec_in_month le ON le.kpi_id = k.id
+      WHERE c.tenant_id = ${ctx.tenantId}
+      GROUP BY c.id
+    )
     SELECT
       c.id,
       c.control_code,
@@ -57,208 +237,66 @@ export async function fetchControlsPage(
       f.name::text AS framework,
       c.frequency::text AS frequency,
       r.classification::text AS risk_level,
-      c.created_at::text AS created_at
+      c.created_at::text AS created_at,
+
+      -- mes_ref que o front selecionou (ou mês atual)
+      (SELECT to_char(m, 'YYYY-MM') FROM selected_month)::text AS mes_ref,
+
+      c.control_owner_name::text  AS control_owner_name,
+      c.control_owner_email::text AS control_owner_email,
+      c.focal_point_name::text    AS focal_point_name,
+      c.focal_point_email::text   AS focal_point_email,
+
+      CASE
+        WHEN cw.worst_sev = 3 THEN 'gap'
+        WHEN cw.worst_sev = 2 THEN 'warning'
+        WHEN cw.worst_sev = 1 THEN 'ok'
+        ELSE 'no-data'
+      END::text AS control_result
+
     FROM controls c
     LEFT JOIN frameworks f ON f.id = c.framework_id
     LEFT JOIN risk_catalog r ON r.id = c.risk_id
+    LEFT JOIN control_worst cw ON cw.control_id = c.id
+
     WHERE c.tenant_id = ${ctx.tenantId}
+
       AND (
         ${q}::text IS NULL
         OR c.name ILIKE ${q}
         OR c.control_code ILIKE ${q}
-        OR f.name ILIKE ${q}
+        OR COALESCE(f.name, '') ILIKE ${q}
+        OR COALESCE(c.control_owner_name, '') ILIKE ${q}
+        OR COALESCE(c.control_owner_email, '') ILIKE ${q}
+        OR COALESCE(c.focal_point_name, '') ILIKE ${q}
+        OR COALESCE(c.focal_point_email, '') ILIKE ${q}
       )
+
+      AND (${framework} = '' OR COALESCE(f.name, '') = ${framework})
+      AND (${frequency} = '' OR COALESCE(c.frequency::text, '') = ${frequency})
+      AND (${risk} = '' OR COALESCE(r.classification::text, '') = ${risk})
+
+      AND (
+        ${owner} = ''
+        OR lower(COALESCE(c.control_owner_email::text, '')) = lower(${owner})
+        OR lower(COALESCE(c.control_owner_name::text, '')) = lower(${owner})
+      )
+
+      AND (
+        ${focal} = ''
+        OR lower(COALESCE(c.focal_point_email::text, '')) = lower(${focal})
+        OR lower(COALESCE(c.focal_point_name::text, '')) = lower(${focal})
+      )
+
     ORDER BY c.created_at DESC
     LIMIT ${limit} OFFSET ${offset}
   `
 
-  return { rows, total }
+  return { rows: pageRes.rows, total }
 }
 
 // =============================
-// ✅ IMPORTAÇÃO CSV (SIMPLES)
-// =============================
-
-export type ImportControlInput = {
-  code: string
-  name: string
-  framework: string
-
-  description?: string
-  framework_ref?: string
-  domain_section?: string
-  frequency?: string
-  frequency_key?: string
-  status?: string
-}
-
-/**
- * ⚠️ Import simples usa helpers "Legacy" para não conflitar com o import completo.
- */
-function normLegacy(v: any) {
-  return String(v ?? "").trim()
-}
-
-const ALLOWED_FREQUENCY_LEGACY = new Set(["daily", "weekly", "monthly", "quarterly", "semiannual", "annual"])
-const ALLOWED_STATUS_LEGACY = new Set(["active", "inactive", "pending"])
-
-function pickFrequencyLegacy(v?: string) {
-  const s = normLegacy(v).toLowerCase()
-  if (ALLOWED_FREQUENCY_LEGACY.has(s)) return s
-  return "monthly"
-}
-
-function pickStatusLegacy(v?: string) {
-  const s = normLegacy(v).toLowerCase()
-  if (ALLOWED_STATUS_LEGACY.has(s)) return s
-  return "active"
-}
-
-export async function importarControles(
-  items: ImportControlInput[]
-): Promise<{
-  imported: number
-  updated: number
-  skipped: number
-  errors: { line: number; code?: string; message: string }[]
-}> {
-  const ctx = await getContext()
-
-  if (!Array.isArray(items) || items.length === 0) {
-    return { imported: 0, updated: 0, skipped: 0, errors: [{ line: 0, message: "Nenhum item para importar." }] }
-  }
-
-  const max = 2000
-  if (items.length > max) {
-    return {
-      imported: 0,
-      updated: 0,
-      skipped: 0,
-      errors: [{ line: 0, message: `Arquivo muito grande. Limite atual: ${max} linhas.` }],
-    }
-  }
-
-  let imported = 0
-  let updated = 0
-  let skipped = 0
-  const errors: { line: number; code?: string; message: string }[] = []
-
-  const frameworkCache = new Map<string, string>()
-
-  for (let i = 0; i < items.length; i++) {
-    const line = i + 1
-    const raw = items[i]
-
-    const code = normLegacy(raw.code)
-    const name = normLegacy(raw.name)
-    const frameworkName = normLegacy(raw.framework)
-
-    if (!code || !name || !frameworkName) {
-      skipped++
-      errors.push({ line, code: code || undefined, message: "Campos obrigatórios ausentes (code, name, framework)." })
-      continue
-    }
-
-    const description = normLegacy(raw.description) || null
-    const framework_ref = normLegacy(raw.framework_ref) || null
-    const domain_section = normLegacy(raw.domain_section) || null
-    const frequency = pickFrequencyLegacy(raw.frequency)
-    const frequency_key = normLegacy(raw.frequency_key) || null
-    const status = pickStatusLegacy(raw.status)
-
-    const fwKey = frameworkName.toLowerCase()
-
-    try {
-      let frameworkId = frameworkCache.get(fwKey)
-      if (!frameworkId) {
-        const fwRes = await sql<{ id: string }>`
-          SELECT id
-          FROM frameworks
-          WHERE tenant_id = ${ctx.tenantId}
-            AND lower(name) = lower(${frameworkName})
-          LIMIT 1
-        `
-        frameworkId = fwRes.rows?.[0]?.id
-
-        if (!frameworkId) {
-          const insFw = await sql<{ id: string }>`
-            INSERT INTO frameworks (tenant_id, name)
-            VALUES (${ctx.tenantId}, ${frameworkName})
-            RETURNING id
-          `
-          frameworkId = insFw.rows?.[0]?.id
-        }
-
-        if (!frameworkId) throw new Error("Falha ao resolver framework_id.")
-        frameworkCache.set(fwKey, frameworkId)
-      }
-
-      const ex = await sql<{ id: string }>`
-        SELECT id
-        FROM controls
-        WHERE tenant_id = ${ctx.tenantId}
-          AND control_code = ${code}
-        LIMIT 1
-      `
-      const existingId = ex.rows?.[0]?.id
-
-      if (existingId) {
-        await sql`
-          UPDATE controls
-          SET
-            name = ${name},
-            description = ${description},
-            framework_id = ${frameworkId},
-            framework_ref = ${framework_ref},
-            domain_section = ${domain_section},
-            frequency = ${frequency},
-            frequency_key = ${frequency_key},
-            status = ${status},
-            updated_at = now()
-          WHERE id = ${existingId}
-            AND tenant_id = ${ctx.tenantId}
-        `
-        updated++
-      } else {
-        await sql`
-          INSERT INTO controls (
-            tenant_id,
-            control_code,
-            name,
-            description,
-            framework_id,
-            framework_ref,
-            domain_section,
-            frequency,
-            frequency_key,
-            status
-          )
-          VALUES (
-            ${ctx.tenantId},
-            ${code},
-            ${name},
-            ${description},
-            ${frameworkId},
-            ${framework_ref},
-            ${domain_section},
-            ${frequency},
-            ${frequency_key},
-            ${status}
-          )
-        `
-        imported++
-      }
-    } catch (e: any) {
-      skipped++
-      errors.push({ line, code, message: e?.message || "Erro ao importar linha." })
-    }
-  }
-
-  return { imported, updated, skipped, errors }
-}
-
-// =============================
-// ✅ IMPORTAÇÃO CSV (COMPLETA: CONTROLE + RISCO + KPI)
+// IMPORT COMPLETO (Opção A)
 // =============================
 
 export type ImportRow = {
@@ -269,8 +307,14 @@ export type ImportRow = {
   control_status?: string
   control_frequency?: string
   control_type?: string
+
   control_owner_email?: string
+  control_owner_name?: string
   focal_point_email?: string
+  focal_point_name?: string
+
+  // ✅ NOVO (opcional): se no futuro você quiser importar por CSV
+  mes_ref?: string // YYYY-MM
 
   risk_code?: string
   risk_name?: string
@@ -286,7 +330,6 @@ export type ImportRow = {
 function norm(v: any) {
   return String(v ?? "").trim()
 }
-
 function normLower(v: any) {
   return norm(v).toLowerCase()
 }
@@ -304,26 +347,19 @@ const FREQ_MAP: Record<string, "daily" | "weekly" | "monthly" | "quarterly" | "s
   diario: "daily",
   diário: "daily",
   daily: "daily",
-
   semanal: "weekly",
   weekly: "weekly",
-
   mensal: "monthly",
   monthly: "monthly",
-
   trimestral: "quarterly",
   quarterly: "quarterly",
-
   semestral: "semiannual",
   semiannual: "semiannual",
-
   anual: "annual",
   annual: "annual",
   yearly: "annual",
 }
 
-// ✅ enum do banco agora é risk_classification_new e NÃO aceita "med"
-// valores esperados: low | medium | high | critical
 const RISK_CLASS_MAP: Record<string, "critical" | "high" | "medium" | "low"> = {
   critico: "critical",
   crítico: "critical",
@@ -331,34 +367,23 @@ const RISK_CLASS_MAP: Record<string, "critical" | "high" | "medium" | "low"> = {
   crítica: "critical",
   critical: "critical",
   crit: "critical",
-
   alto: "high",
   high: "high",
-
-  // tudo que for "med"/"médio"/"moderado"/"moderate"/"medium" vira "medium"
   medio: "medium",
   médio: "medium",
   moderado: "medium",
   moderate: "medium",
   med: "medium",
   medium: "medium",
-
   baixo: "low",
   low: "low",
-}
-
-function pickRiskClass(v?: string) {
-  const s = normLower(v)
-  return RISK_CLASS_MAP[s] ?? "medium"
 }
 
 const TYPE_MAP: Record<string, "preventive" | "detective" | "corrective"> = {
   preventivo: "preventive",
   preventive: "preventive",
-
   detectivo: "detective",
   detective: "detective",
-
   corretivo: "corrective",
   corrective: "corrective",
 }
@@ -367,36 +392,24 @@ function pickControlStatus(v?: string) {
   const s = normLower(v)
   return CONTROL_STATUS_MAP[s] ?? "active"
 }
-
 function pickFrequency(v?: string) {
   const s = normLower(v)
   return FREQ_MAP[s] ?? "monthly"
 }
-
+function pickRiskClass(v?: string) {
+  const s = normLower(v)
+  return RISK_CLASS_MAP[s] ?? "medium"
+}
 function pickType(v?: string) {
   const s = normLower(v)
   return TYPE_MAP[s] ?? null
 }
 
-async function resolveOrCreateUserIdByEmail(emailRaw: string | undefined, tenantId: string) {
-  const email = norm(emailRaw)
-  if (!email) return null
-
-  const found = await sql<{ id: string }>`
-    SELECT id FROM users
-    WHERE tenant_id = ${tenantId} AND lower(email) = lower(${email})
-    LIMIT 1
-  `
-  if (found.rows?.[0]?.id) return found.rows[0].id
-
-  const name = email.split("@")[0]?.replace(/[._-]+/g, " ")?.trim() || "User"
-
-  const ins = await sql<{ id: string }>`
-    INSERT INTO users (tenant_id, name, email, role)
-    VALUES (${tenantId}, ${name}, ${email}, 'viewer')
-    RETURNING id
-  `
-  return ins.rows?.[0]?.id ?? null
+function pickMesRefDate(v?: string | undefined | null): string | null {
+  const s = norm(v)
+  if (!s) return null
+  if (!/^\d{4}-\d{2}$/.test(s)) return null
+  return `${s}-01`
 }
 
 async function resolveOrCreateFrameworkId(frameworkNameRaw: string, tenantId: string, cache: Map<string, string>) {
@@ -407,12 +420,13 @@ async function resolveOrCreateFrameworkId(frameworkNameRaw: string, tenantId: st
   const cached = cache.get(key)
   if (cached) return cached
 
-  const f = await sql<{ id: string }>`
+  const found = await sql<{ id: string }>`
     SELECT id FROM frameworks
-    WHERE tenant_id = ${tenantId} AND lower(name) = lower(${frameworkName})
+    WHERE tenant_id = ${tenantId}
+      AND lower(name) = lower(${frameworkName})
     LIMIT 1
   `
-  let id = f.rows?.[0]?.id
+  let id = found.rows?.[0]?.id
 
   if (!id) {
     const ins = await sql<{ id: string }>`
@@ -438,7 +452,8 @@ async function resolveOrCreateRiskId(row: ImportRow, tenantId: string, riskCache
 
   const existing = await sql<{ id: string }>`
     SELECT id FROM risk_catalog
-    WHERE tenant_id = ${tenantId} AND lower(risk_code) = lower(${riskCode})
+    WHERE tenant_id = ${tenantId}
+      AND lower(risk_code) = lower(${riskCode})
     LIMIT 1
   `
   let id = existing.rows?.[0]?.id
@@ -448,7 +463,6 @@ async function resolveOrCreateRiskId(row: ImportRow, tenantId: string, riskCache
   const classification = pickRiskClass(row.risk_classification)
 
   if (id) {
-    // ✅ SEM CAST: deixa o Postgres converter para o tipo real da coluna (risk_classification_new ou outro)
     await sql`
       UPDATE risk_catalog
       SET
@@ -456,18 +470,13 @@ async function resolveOrCreateRiskId(row: ImportRow, tenantId: string, riskCache
         description = ${description},
         classification = ${classification},
         updated_at = now()
-      WHERE id = ${id} AND tenant_id = ${tenantId}
+      WHERE id = ${id}
+        AND tenant_id = ${tenantId}
     `
   } else {
     const ins = await sql<{ id: string }>`
       INSERT INTO risk_catalog (tenant_id, risk_code, title, description, classification)
-      VALUES (
-        ${tenantId},
-        ${riskCode},
-        ${title},
-        ${description},
-        ${classification}
-      )
+      VALUES (${tenantId}, ${riskCode}, ${title}, ${description}, ${classification})
       RETURNING id
     `
     id = ins.rows?.[0]?.id
@@ -504,9 +513,9 @@ export async function importarControlesCompleto(
 
   const groups = new Map<string, { rows: { row: ImportRow; line: number }[] }>()
   items.forEach((r, idx) => {
-    const controlCode = norm(r.control_code)
-    if (!controlCode) return
-    const key = controlCode.toLowerCase()
+    const code = norm(r.control_code)
+    if (!code) return
+    const key = code.toLowerCase()
     const g = groups.get(key) ?? { rows: [] }
     g.rows.push({ row: r, line: idx + 1 })
     groups.set(key, g)
@@ -529,8 +538,6 @@ export async function importarControlesCompleto(
 
     try {
       const framework_id = await resolveOrCreateFrameworkId(r0.framework, tenantId, fwCache)
-      const owner_user_id = await resolveOrCreateUserIdByEmail(r0.control_owner_email, tenantId)
-      const focal_point_user_id = await resolveOrCreateUserIdByEmail(r0.focal_point_email, tenantId)
       const risk_id = await resolveOrCreateRiskId(r0, tenantId, riskCache)
 
       const name = norm(r0.control_name)
@@ -541,12 +548,21 @@ export async function importarControlesCompleto(
       const frequency = pickFrequency(r0.control_frequency)
       const type = pickType(r0.control_type)
 
-      const ex = await sql<{ id: string }>`
-        SELECT id FROM controls
-        WHERE tenant_id = ${tenantId} AND control_code = ${control_code}
+      const control_owner_email = norm(r0.control_owner_email) || null
+      const control_owner_name = norm(r0.control_owner_name) || null
+      const focal_point_email = norm(r0.focal_point_email) || null
+      const focal_point_name = norm(r0.focal_point_name) || null
+
+      const mesRefIso = pickMesRefDate(r0.mes_ref) // "YYYY-MM-01" ou null
+
+      const existing = await sql<{ id: string }>`
+        SELECT id
+        FROM controls
+        WHERE tenant_id = ${tenantId}
+          AND control_code = ${control_code}
         LIMIT 1
       `
-      let controlId = ex.rows?.[0]?.id
+      let controlId = existing.rows?.[0]?.id
 
       if (controlId) {
         await sql`
@@ -558,19 +574,28 @@ export async function importarControlesCompleto(
             risk_id = ${risk_id},
             frequency = ${frequency},
             status = ${status},
-            owner_user_id = ${owner_user_id},
-            focal_point_user_id = ${focal_point_user_id},
             type = ${type},
+
+            control_owner_email = ${control_owner_email},
+            control_owner_name = ${control_owner_name},
+            focal_point_email = ${focal_point_email},
+            focal_point_name = ${focal_point_name},
+
+            mes_ref = COALESCE(to_date(${mesRefIso}::text, 'YYYY-MM-DD'), mes_ref),
+
             updated_at = now()
-          WHERE id = ${controlId} AND tenant_id = ${tenantId}
+          WHERE id = ${controlId}
+            AND tenant_id = ${tenantId}
         `
         controls_updated++
       } else {
         const ins = await sql<{ id: string }>`
           INSERT INTO controls (
             tenant_id, control_code, name, description,
-            framework_id, risk_id, frequency, status,
-            owner_user_id, focal_point_user_id, type
+            framework_id, risk_id, frequency, status, type,
+            control_owner_email, control_owner_name,
+            focal_point_email, focal_point_name,
+            mes_ref
           )
           VALUES (
             ${tenantId},
@@ -581,9 +606,12 @@ export async function importarControlesCompleto(
             ${risk_id},
             ${frequency},
             ${status},
-            ${owner_user_id},
-            ${focal_point_user_id},
-            ${type}
+            ${type},
+            ${control_owner_email},
+            ${control_owner_name},
+            ${focal_point_email},
+            ${focal_point_name},
+            COALESCE(to_date(${mesRefIso}::text, 'YYYY-MM-DD'), date_trunc('month', now())::date)
           )
           RETURNING id
         `
@@ -615,6 +643,7 @@ export async function importarControlesCompleto(
         const kpi_description = norm(rr.kpi_description) || null
         const target_value_raw = norm(rr.kpi_target)
         const target_value = target_value_raw ? Number(target_value_raw.replace(",", ".")) : null
+
         if (target_value_raw && !Number.isFinite(target_value as any)) {
           skipped++
           errors.push({ line, control_code, kpi_code, message: "kpi_target inválido (use número)." })
@@ -622,8 +651,10 @@ export async function importarControlesCompleto(
         }
 
         const existsKpi = await sql<{ id: string }>`
-          SELECT id FROM kpis
-          WHERE tenant_id = ${tenantId} AND kpi_code = ${kpi_code}
+          SELECT id
+          FROM kpis
+          WHERE tenant_id = ${tenantId}
+            AND kpi_code = ${kpi_code}
           LIMIT 1
         `
         const existingKpiId = existsKpi.rows?.[0]?.id
@@ -637,7 +668,8 @@ export async function importarControlesCompleto(
               description = ${kpi_description},
               target_value = ${target_value},
               updated_at = now()
-            WHERE id = ${existingKpiId} AND tenant_id = ${tenantId}
+            WHERE id = ${existingKpiId}
+              AND tenant_id = ${tenantId}
           `
           kpis_updated++
         } else {
