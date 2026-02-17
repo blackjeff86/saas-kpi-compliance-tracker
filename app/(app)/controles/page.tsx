@@ -1,3 +1,4 @@
+// app/(app)/controles/page.tsx
 import Link from "next/link"
 import PageContainer from "../PageContainer"
 import PageHeader from "../PageHeader"
@@ -25,6 +26,18 @@ function buildHref(params: Record<string, string>, page: number) {
   return `/controles?${s.toString()}`
 }
 
+// ✅ mês atual em YYYY-MM (America/Sao_Paulo)
+function currentYYYYMM() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(new Date())
+  const y = parts.find((p) => p.type === "year")?.value ?? ""
+  const m = parts.find((p) => p.type === "month")?.value ?? ""
+  return `${y}-${m}`
+}
+
 export default async function ControlesPage({
   searchParams,
 }: {
@@ -35,7 +48,9 @@ export default async function ControlesPage({
   const q = (pickFirst(sp.q) ?? "").trim()
   const page = clampInt(pickFirst(sp.page), 1, 1, 99999)
 
-  const mes_ref = (pickFirst(sp.mes_ref) ?? "").trim()
+  // ✅ agora SEMPRE começa no mês atual
+  const mes_ref = ((pickFirst(sp.mes_ref) ?? "").trim() || currentYYYYMM())
+
   const owner = (pickFirst(sp.owner) ?? "").trim()
   const focal = (pickFirst(sp.focal) ?? "").trim()
   const frequency = (pickFirst(sp.frequency) ?? "").trim()
@@ -102,10 +117,8 @@ export default async function ControlesPage({
           }
         />
 
-        {/* Filters auto-apply */}
         <FiltersBar total={total} opts={opts} />
 
-        {/* Table */}
         <div className="bg-white dark:bg-background-dark border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
           {rows.length === 0 ? (
             <div className="px-4 py-10">
@@ -120,7 +133,6 @@ export default async function ControlesPage({
             <ControlsTable rows={rows as any} />
           )}
 
-          {/* Pagination */}
           <div className="px-4 py-3 bg-white dark:bg-background-dark border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="text-sm text-slate-500">
               Mostrando{" "}

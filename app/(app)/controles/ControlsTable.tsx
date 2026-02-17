@@ -34,7 +34,6 @@ function frameworkPill() {
 
 function resultBadge(v?: string | null) {
   const s = (v || "").toLowerCase()
-  // suportando seus nomes atuais (gap/warning/ok/no-data) e também red/yellow/green
   if (s === "gap" || s === "red") return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
   if (s === "warning" || s === "yellow") return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
   if (s === "ok" || s === "green") return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
@@ -89,22 +88,17 @@ export default function ControlsTable({ rows }: { rows: Row[] }) {
               aria-label={`Abrir controle ${r.control_code}`}
             >
               <td className="px-4 py-3">
-                <div className="flex items-start gap-3">
+                <div className="flex items-center gap-3">
                   <div className="mt-1 h-8 w-1 rounded-full bg-transparent group-hover:bg-primary/60 transition-colors" />
 
                   <div className="min-w-0">
+                    {/* Nome do controle agora: CODE | NAME */}
                     <div className="text-sm font-semibold text-slate-900 dark:text-white truncate">
-                      {r.name}
-                    </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      <span className="font-mono">{r.control_code}</span>
-                      <span className="mx-2 text-slate-300 dark:text-slate-700">•</span>
-                      <span>
-                        Mês: <span className="font-mono">{r.mes_ref ?? "—"}</span>
+                      <span className="font-mono text-slate-500 dark:text-slate-400">
+                        {r.control_code}
                       </span>
-                    </div>
-                    <div className="text-[11px] text-slate-400 mt-1">
-                      Criado em: <span className="font-mono">{r.created_at}</span>
+                      <span className="mx-2 text-slate-300 dark:text-slate-700">|</span>
+                      {r.name}
                     </div>
                   </div>
                 </div>
@@ -137,7 +131,6 @@ export default function ControlsTable({ rows }: { rows: Row[] }) {
                   className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${resultBadge(
                     r.control_result
                   )}`}
-                  title="Resultado do controle no mês (pior KPI)"
                 >
                   <span className="w-1 h-1 rounded-full bg-current opacity-60 mr-1.5" />
                   {r.control_result ?? "—"}

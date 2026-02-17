@@ -58,12 +58,15 @@ export async function fetchControlsFilterOptions(): Promise<{
   const ctx = await getContext()
 
   const [months, fw, fr, rk, owners, focals] = await Promise.all([
-    // ✅ meses reais vêm das execuções (period_start)
+    // ✅ meses fixos para seleção (2026-01 até 2027-12)
+    // (independe de existir execução no mês)
     sql<{ v: string }>`
-      SELECT DISTINCT to_char(date_trunc('month', ke.period_start)::date, 'YYYY-MM') AS v
-      FROM kpi_executions ke
-      WHERE ke.tenant_id = ${ctx.tenantId}
-        AND ke.period_start IS NOT NULL
+      SELECT to_char(d::date, 'YYYY-MM') AS v
+      FROM generate_series(
+        date '2026-01-01',
+        date '2027-12-01',
+        interval '1 month'
+      ) AS d
       ORDER BY v DESC
     `,
     sql<{ name: string }>`
