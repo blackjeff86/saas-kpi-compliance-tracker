@@ -32,7 +32,17 @@ export async function fetchGrcQueue(): Promise<GrcQueueRow[]> {
       e.workflow_status::text AS workflow_status,
       e.auto_status::text AS auto_status,
       e.review_due_date::text AS review_due_date,
-      r.classification::text AS risk_level
+
+      -- ✅ normaliza "med" (legado) -> "medium" no retorno em texto
+      CASE
+        WHEN r.classification IS NULL THEN NULL
+        WHEN lower(trim(r.classification::text)) IN ('medium', 'med', 'moderate', 'médio', 'medio') THEN 'medium'
+        WHEN lower(trim(r.classification::text)) IN ('critical', 'crítico', 'critico') THEN 'critical'
+        WHEN lower(trim(r.classification::text)) IN ('high', 'alto') THEN 'high'
+        WHEN lower(trim(r.classification::text)) IN ('low', 'baixo') THEN 'low'
+        ELSE lower(trim(r.classification::text))
+      END AS risk_level
+
     FROM kpi_executions e
     JOIN controls c ON c.id = e.control_id
     JOIN kpis k ON k.id = e.kpi_id
@@ -40,10 +50,13 @@ export async function fetchGrcQueue(): Promise<GrcQueueRow[]> {
     WHERE e.tenant_id = ${ctx.tenantId}
       AND e.workflow_status IN ('submitted','under_review','needs_changes')
     ORDER BY
-      CASE r.classification
-        WHEN 'critical' THEN 4
-        WHEN 'high' THEN 3
-        WHEN 'med' THEN 2
+      -- ✅ ORDER BY em cima do TEXTO normalizado (não no enum)
+      CASE
+        WHEN r.classification IS NULL THEN 0
+        WHEN lower(trim(r.classification::text)) IN ('critical', 'crítico', 'critico') THEN 4
+        WHEN lower(trim(r.classification::text)) IN ('high', 'alto') THEN 3
+        WHEN lower(trim(r.classification::text)) IN ('medium', 'med', 'moderate', 'médio', 'medio') THEN 2
+        WHEN lower(trim(r.classification::text)) IN ('low', 'baixo') THEN 1
         ELSE 1
       END DESC,
       e.review_due_date ASC NULLS LAST,
@@ -51,5 +64,6 @@ export async function fetchGrcQueue(): Promise<GrcQueueRow[]> {
       e.created_at DESC
     LIMIT 200;
   `
+
   return rows
 }

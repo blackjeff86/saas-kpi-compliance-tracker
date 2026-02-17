@@ -187,7 +187,7 @@ export default function GrcQueueClient({ initialRows }: Props) {
             <option value="all">Risco: Todos</option>
             <option value="critical">critical</option>
             <option value="high">high</option>
-            <option value="med">med</option>
+            <option value="medium">medium</option>
             <option value="low">low</option>
           </select>
 

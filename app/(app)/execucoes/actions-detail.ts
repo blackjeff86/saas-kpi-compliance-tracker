@@ -62,9 +62,10 @@ export async function submitGrcReview(opts: {
   executionId: string
   decision: ReviewDecision
   comment: string
+  reviewerEmail?: string // ✅ agora aceita (mantém compatibilidade com o client)
 }) {
   const ctx = await getContext()
-  const { executionId, decision, comment } = opts
+  const { executionId, decision, comment } = opts // reviewerEmail não é necessário aqui (por enquanto)
 
   // garantir que a execução pertence ao tenant atual
   const execRes = await sql`
