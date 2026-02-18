@@ -6,7 +6,7 @@ import { getContext } from "../lib/context"
 export type KpiRow = {
   id: string
   kpi_code: string
-  name: string
+  kpi_name: string
   kpi_type: string | null
   target_operator: string | null
   target_value: number | null
@@ -21,7 +21,7 @@ export async function fetchKpis(): Promise<KpiRow[]> {
     SELECT
       id,
       kpi_code,
-      name,
+      kpi_name,
       kpi_type::text AS kpi_type,
       target_operator::text AS target_operator,
       target_value,

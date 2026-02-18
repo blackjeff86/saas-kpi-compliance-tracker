@@ -1,3 +1,4 @@
+// app/(app)/controles/import/ImportControlsClient.tsx
 "use client"
 
 import React, { useMemo, useRef, useState, useTransition } from "react"
@@ -14,7 +15,6 @@ import {
   Play,
 } from "lucide-react"
 
-// ✅ ajuste o caminho se necessário
 import { importarControlesCompleto } from "../actions"
 
 type ImportRow = {
@@ -22,14 +22,15 @@ type ImportRow = {
   control_code: string
   control_name: string
   control_description?: string
+  control_goal?: string // ✅ NOVO (goal do controle)
   control_status?: string
   control_frequency?: string
   control_type?: string
 
   control_owner_email?: string
-  control_owner_name?: string // ✅ NOVO
+  control_owner_name?: string
   focal_point_email?: string
-  focal_point_name?: string // ✅ NOVO
+  focal_point_name?: string
 
   risk_code?: string
   risk_name?: string
@@ -39,7 +40,16 @@ type ImportRow = {
   kpi_code?: string
   kpi_name?: string
   kpi_description?: string
+
+  // ✅ Compat antigo
   kpi_target?: string | number
+
+  // ✅ NOVOS (config KPI)
+  kpi_type?: string // percent | number | boolean
+  kpi_target_operator?: string // gte | lte | eq  (ou >= <= =)
+  kpi_target_value?: string | number
+  kpi_target_boolean?: string // true/false/sim/nao/1/0
+  kpi_warning_buffer_pct?: string | number // ex: 5 (percentual)
 }
 
 type RowValidation = {
@@ -57,10 +67,6 @@ function stripBom(s: string) {
   return s?.replace(/^\uFEFF/, "") ?? s
 }
 
-/**
- * Retorna SOMENTE keys válidas do template.
- * Se não for reconhecida, retorna null.
- */
 function normalizeKey(k: string): keyof ImportRow | null {
   const s = stripBom(norm(k)).toLowerCase()
 
@@ -84,6 +90,12 @@ function normalizeKey(k: string): keyof ImportRow | null {
     "descrição": "control_description",
     description: "control_description",
 
+    // ✅ NOVO: goal
+    control_goal: "control_goal",
+    goal: "control_goal",
+    objetivo: "control_goal",
+    "objetivo do controle": "control_goal",
+
     control_status: "control_status",
     status: "control_status",
 
@@ -99,7 +111,6 @@ function normalizeKey(k: string): keyof ImportRow | null {
     owner: "control_owner_email",
     owner_email: "control_owner_email",
 
-    // ✅ NOVO: owner name
     control_owner_name: "control_owner_name",
     owner_name: "control_owner_name",
     "nome owner": "control_owner_name",
@@ -110,7 +121,6 @@ function normalizeKey(k: string): keyof ImportRow | null {
     focal: "focal_point_email",
     focal_email: "focal_point_email",
 
-    // ✅ NOVO: focal name
     focal_point_name: "focal_point_name",
     focal_name: "focal_point_name",
     "nome focal": "focal_point_name",
@@ -144,9 +154,32 @@ function normalizeKey(k: string): keyof ImportRow | null {
     kpi_description: "kpi_description",
     "descrição kpi": "kpi_description",
 
+    // compat antigo
     kpi_target: "kpi_target",
     meta: "kpi_target",
     "meta kpi": "kpi_target",
+
+    // ✅ NOVOS
+    kpi_type: "kpi_type",
+    "tipo kpi": "kpi_type",
+    "kpi tipo": "kpi_type",
+
+    kpi_target_operator: "kpi_target_operator",
+    "operador meta": "kpi_target_operator",
+    "target operator": "kpi_target_operator",
+
+    kpi_target_value: "kpi_target_value",
+    "meta valor": "kpi_target_value",
+    "target value": "kpi_target_value",
+
+    kpi_target_boolean: "kpi_target_boolean",
+    "meta boolean": "kpi_target_boolean",
+    "meta sim nao": "kpi_target_boolean",
+
+    kpi_warning_buffer_pct: "kpi_warning_buffer_pct",
+    "warning pct": "kpi_warning_buffer_pct",
+    "faixa warning": "kpi_warning_buffer_pct",
+    "yellow pct": "kpi_warning_buffer_pct",
   }
 
   return map[s] ?? null
@@ -172,13 +205,14 @@ function buildTemplateCsv() {
     "control_code",
     "control_name",
     "control_description",
+    "control_goal",
     "control_status",
     "control_frequency",
     "control_type",
     "control_owner_email",
-    "control_owner_name", // ✅ NOVO
+    "control_owner_name",
     "focal_point_email",
-    "focal_point_name", // ✅ NOVO
+    "focal_point_name",
     "risk_code",
     "risk_name",
     "risk_description",
@@ -186,6 +220,15 @@ function buildTemplateCsv() {
     "kpi_code",
     "kpi_name",
     "kpi_description",
+
+    // ✅ NOVOS
+    "kpi_type",
+    "kpi_target_operator",
+    "kpi_target_value",
+    "kpi_target_boolean",
+    "kpi_warning_buffer_pct",
+
+    // ✅ Compat antigo (opcional)
     "kpi_target",
   ]
 
@@ -195,6 +238,7 @@ function buildTemplateCsv() {
       "ISO27001-CTRL-001",
       "Treinamento de Conscientização em Segurança",
       "Treinar colaboradores e medir conclusão mínima",
+      "Reduzir risco de incidentes por comportamento inseguro",
       "Ativo",
       "Mensal",
       "Preventivo",
@@ -209,13 +253,19 @@ function buildTemplateCsv() {
       "ISO27001-KPI-001-01",
       "% de conclusão de treinamento",
       "Maior é melhor. Percentual de colaboradores que concluíram o treinamento no mês.",
+      "percent",
+      "gte",
       "90",
+      "",
+      "5",
+      "",
     ],
     [
       "ISO27001",
       "ISO27001-CTRL-001",
       "Treinamento de Conscientização em Segurança",
       "Treinar colaboradores e medir conclusão mínima",
+      "Reduzir risco de incidentes por comportamento inseguro",
       "Ativo",
       "Mensal",
       "Preventivo",
@@ -228,9 +278,41 @@ function buildTemplateCsv() {
       "Risco de incidentes por baixa conscientização e comportamento inseguro",
       "Alto",
       "ISO27001-KPI-001-02",
-      "Taxa de reprovação em phishing simulado (%)",
+      "Phishing simulado - taxa de clique",
       "Menor é melhor. Percentual de usuários que clicaram no phishing simulado.",
+      "percent",
+      "lte",
       "5",
+      "",
+      "5",
+      "",
+    ],
+    [
+      "SOX",
+      "SOX-CTRL-010",
+      "Aprovação de acesso privilegiado",
+      "Garantir aprovações para acessos privilegiados",
+      "Reduzir risco de acesso não autorizado",
+      "Ativo",
+      "Mensal",
+      "Detectivo",
+      "iam@empresa.com",
+      "IAM",
+      "audit@empresa.com",
+      "Auditoria",
+      "SOX-RISK-010",
+      "Acesso indevido",
+      "Risco de acessos privilegiados sem aprovação",
+      "Alto",
+      "SOX-KPI-010-01",
+      "Acessos privilegiados aprovados",
+      "Sim/Não: todos os acessos privilegiados do mês tiveram aprovação?",
+      "boolean",
+      "eq",
+      "",
+      "true",
+      "0",
+      "",
     ],
   ]
 
@@ -322,14 +404,15 @@ export default function ImportControlsClient() {
               control_code: out.control_code || "",
               control_name: out.control_name || "",
               control_description: out.control_description,
+              control_goal: out.control_goal,
               control_status: out.control_status,
               control_frequency: out.control_frequency,
               control_type: out.control_type,
 
               control_owner_email: out.control_owner_email,
-              control_owner_name: out.control_owner_name, // ✅ NOVO
+              control_owner_name: out.control_owner_name,
               focal_point_email: out.focal_point_email,
-              focal_point_name: out.focal_point_name, // ✅ NOVO
+              focal_point_name: out.focal_point_name,
 
               risk_code: out.risk_code,
               risk_name: out.risk_name,
@@ -339,7 +422,14 @@ export default function ImportControlsClient() {
               kpi_code: out.kpi_code,
               kpi_name: out.kpi_name,
               kpi_description: out.kpi_description,
+
               kpi_target: out.kpi_target,
+
+              kpi_type: out.kpi_type,
+              kpi_target_operator: out.kpi_target_operator,
+              kpi_target_value: out.kpi_target_value,
+              kpi_target_boolean: out.kpi_target_boolean,
+              kpi_warning_buffer_pct: out.kpi_warning_buffer_pct,
             }
           })
 
@@ -373,14 +463,15 @@ export default function ImportControlsClient() {
       control_name: norm(r.control_name),
 
       control_description: emptyToUndef(r.control_description),
+      control_goal: emptyToUndef(r.control_goal),
       control_status: emptyToUndef(r.control_status),
       control_frequency: emptyToUndef(r.control_frequency),
       control_type: emptyToUndef(r.control_type),
 
       control_owner_email: emptyToUndef(r.control_owner_email),
-      control_owner_name: emptyToUndef(r.control_owner_name), // ✅ NOVO
+      control_owner_name: emptyToUndef(r.control_owner_name),
       focal_point_email: emptyToUndef(r.focal_point_email),
-      focal_point_name: emptyToUndef(r.focal_point_name), // ✅ NOVO
+      focal_point_name: emptyToUndef(r.focal_point_name),
 
       risk_code: emptyToUndef(r.risk_code),
       risk_name: emptyToUndef(r.risk_name),
@@ -390,7 +481,16 @@ export default function ImportControlsClient() {
       kpi_code: emptyToUndef(r.kpi_code),
       kpi_name: emptyToUndef(r.kpi_name),
       kpi_description: emptyToUndef(r.kpi_description),
+
+      // compat
       kpi_target: emptyToUndef(r.kpi_target),
+
+      // novos
+      kpi_type: emptyToUndef(r.kpi_type),
+      kpi_target_operator: emptyToUndef(r.kpi_target_operator),
+      kpi_target_value: emptyToUndef(r.kpi_target_value),
+      kpi_target_boolean: emptyToUndef(r.kpi_target_boolean),
+      kpi_warning_buffer_pct: emptyToUndef(r.kpi_warning_buffer_pct),
     }))
 
     startTransition(async () => {
@@ -534,7 +634,8 @@ export default function ImportControlsClient() {
               linhas para criar KPIs diferentes sem duplicar o controle.
               <br />
               <br />
-              ✅ Agora também aceitamos <b>control_owner_name</b> e <b>focal_point_name</b> no CSV.
+              ✅ Agora também aceitamos configuração de KPI: <b>kpi_type</b>, <b>kpi_target_operator</b>, <b>kpi_target_value</b>,
+              <b>kpi_target_boolean</b> e <b>kpi_warning_buffer_pct</b>.
             </p>
 
             <button
@@ -549,6 +650,7 @@ export default function ImportControlsClient() {
         </div>
       </div>
 
+      {/* Preview */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
           <div>
@@ -624,16 +726,15 @@ export default function ImportControlsClient() {
                     <td className="px-6 py-3 text-sm">
                       <div className="font-mono text-slate-700">{row.control_code || "—"}</div>
                       <div className="text-xs text-slate-500">{row.control_name || "—"}</div>
+                      {row.control_goal ? <div className="text-[11px] text-slate-400 mt-1">Goal: {row.control_goal}</div> : null}
                     </td>
                     <td className="px-6 py-3 text-sm text-slate-700">{row.framework || "—"}</td>
                     <td className="px-6 py-3 text-sm text-slate-700">
                       <div className="text-xs">
-                        <span className="font-semibold">Owner:</span>{" "}
-                        {row.control_owner_name || row.control_owner_email || "—"}
+                        <span className="font-semibold">Owner:</span> {row.control_owner_name || row.control_owner_email || "—"}
                       </div>
                       <div className="text-xs text-slate-500 mt-0.5">
-                        <span className="font-semibold text-slate-600">Focal:</span>{" "}
-                        {row.focal_point_name || row.focal_point_email || "—"}
+                        <span className="font-semibold text-slate-600">Focal:</span> {row.focal_point_name || row.focal_point_email || "—"}
                       </div>
                     </td>
                     <td className="px-6 py-3 text-sm text-slate-700">{row.kpi_code || "—"}</td>

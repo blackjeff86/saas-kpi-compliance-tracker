@@ -1,7 +1,12 @@
+// app/(app)/controles/[id]/actions.ts
 "use server"
 
 import { sql } from "@vercel/postgres"
 import { getContext } from "../../lib/context"
+
+// =============================
+// TYPES
+// =============================
 
 export type ControlDetail = {
   id: string
@@ -11,6 +16,20 @@ export type ControlDetail = {
   frequency: string | null
   risk_level: string | null
   created_at: string
+
+  // ✅ NOVO: campos do controle
+  description: string | null
+  goal: string | null
+
+  control_owner_name: string | null
+  control_owner_email: string | null
+  focal_point_name: string | null
+  focal_point_email: string | null
+
+  // ✅ NOVO: dados do risco
+  risk_id: string | null
+  risk_name: string | null
+  risk_description: string | null
 }
 
 export type ControlKpiSummaryRow = {
@@ -19,9 +38,10 @@ export type ControlKpiSummaryRow = {
   kpi_name: string
   target_operator: string | null
   target_value: number | null
-  last_result: number | null
-  last_auto_status: string | null
-  last_period_end: string | null
+
+  period_result: number | null
+  period_auto_status: string | null
+  period_end: string | null
 }
 
 export type ActionPlanRow = {
@@ -40,6 +60,38 @@ export type ControlHistoryRow = {
   happened_at: string
 }
 
+// =============================
+// HELPERS
+// =============================
+
+function norm(v: any) {
+  return String(v ?? "").trim()
+}
+
+function toSelectedMonthDate(mes_ref?: string | null) {
+  const mr = norm(mes_ref)
+  if (!mr) return null
+  if (!/^\d{4}-\d{2}$/.test(mr)) return null
+  return mr
+}
+
+export async function fetchControlMonthsOptions(): Promise<string[]> {
+  const { rows } = await sql<{ v: string }>`
+    SELECT to_char(d::date, 'YYYY-MM') AS v
+    FROM generate_series(
+      date '2026-01-01',
+      date '2027-12-01',
+      interval '1 month'
+    ) AS d
+    ORDER BY v DESC
+  `
+  return rows.map((r) => r.v)
+}
+
+// =============================
+// DETAIL (control)
+// =============================
+
 export async function fetchControlDetail(controlId: string): Promise<ControlDetail | null> {
   const ctx = await getContext()
 
@@ -51,7 +103,22 @@ export async function fetchControlDetail(controlId: string): Promise<ControlDeta
       f.name::text AS framework,
       c.frequency::text AS frequency,
       r.classification::text AS risk_level,
-      c.created_at::text AS created_at
+      c.created_at::text AS created_at,
+
+      -- ✅ NOVO: description e goal do controle
+      c.description::text AS description,
+      c.goal::text        AS goal,
+
+      c.control_owner_name::text  AS control_owner_name,
+      c.control_owner_email::text AS control_owner_email,
+      c.focal_point_name::text    AS focal_point_name,
+      c.focal_point_email::text   AS focal_point_email,
+
+      -- ✅ NOVO: dados do risco
+      r.risk_code::text     AS risk_id,
+      r.title::text         AS risk_name,
+      r.description::text   AS risk_description
+
     FROM controls c
     LEFT JOIN frameworks f ON f.id = c.framework_id
     LEFT JOIN risk_catalog r ON r.id = c.risk_id
@@ -63,44 +130,142 @@ export async function fetchControlDetail(controlId: string): Promise<ControlDeta
   return rows[0] ?? null
 }
 
-/**
- * KPIs do controle (baseado em relacionamento observável no schema atual):
- * - Pegamos KPIs que já tiveram pelo menos 1 execução para este controle
- * - E trazemos o "último resultado" via LATERAL
- */
-export async function fetchKpisForControl(controlId: string): Promise<ControlKpiSummaryRow[]> {
+// =============================
+// KPIs (por mês selecionado)
+// =============================
+
+export async function fetchKpisForControl(controlId: string, mes_ref?: string | null): Promise<ControlKpiSummaryRow[]> {
   const ctx = await getContext()
+  const mr = toSelectedMonthDate(mes_ref) ?? "" // YYYY-MM
 
   const { rows } = await sql<ControlKpiSummaryRow>`
-    SELECT DISTINCT
+    WITH selected_month AS (
+      SELECT
+        CASE
+          WHEN ${mr} = '' THEN date_trunc('month', now())::date
+          ELSE to_date(${mr} || '-01', 'YYYY-MM-DD')
+        END AS m
+    ),
+    latest_exec_in_month AS (
+      SELECT DISTINCT ON (ke.kpi_id)
+        ke.kpi_id,
+        ke.result_numeric,
+        ke.auto_status::text AS auto_status,
+        ke.period_end::text  AS period_end,
+        ke.period_start
+      FROM kpi_executions ke
+      CROSS JOIN selected_month sm
+      WHERE ke.tenant_id = ${ctx.tenantId}
+        AND ke.control_id = ${controlId}
+        AND ke.period_start IS NOT NULL
+        AND date_trunc('month', ke.period_start)::date = sm.m
+      ORDER BY ke.kpi_id, ke.period_start DESC, ke.created_at DESC
+    )
+    SELECT
       k.id::text AS kpi_id,
       k.kpi_code::text AS kpi_code,
-      k.name::text AS kpi_name,
+      k.kpi_name::text AS kpi_name,
       k.target_operator::text AS target_operator,
       k.target_value AS target_value,
-      le.result_numeric AS last_result,
-      le.auto_status::text AS last_auto_status,
-      le.period_end::text AS last_period_end
-    FROM kpi_executions e
-    JOIN kpis k ON k.id = e.kpi_id
-    LEFT JOIN LATERAL (
-      SELECT
-        e2.result_numeric,
-        e2.auto_status,
-        e2.period_end
-      FROM kpi_executions e2
-      WHERE e2.tenant_id = ${ctx.tenantId}
-        AND e2.control_id = ${controlId}
-        AND e2.kpi_id = k.id
-      ORDER BY e2.period_end DESC NULLS LAST, e2.created_at DESC
-      LIMIT 1
-    ) le ON true
-    WHERE e.tenant_id = ${ctx.tenantId}
-      AND e.control_id = ${controlId}
-    ORDER BY k.kpi_code ASC, k.name ASC
+
+      le.result_numeric AS period_result,
+      le.auto_status::text AS period_auto_status,
+      le.period_end::text AS period_end
+
+    FROM kpis k
+    LEFT JOIN latest_exec_in_month le ON le.kpi_id = k.id
+    WHERE k.tenant_id = ${ctx.tenantId}
+      AND k.control_id = ${controlId}
+    ORDER BY k.kpi_code ASC, k.kpi_name ASC
   `
   return rows
 }
+
+// =============================
+// CONTROL aggregated status (por mês selecionado)
+// =============================
+
+export async function fetchControlPeriodStatus(controlId: string, mes_ref?: string | null): Promise<{
+  mes_ref_used: string
+  control_period_status: "gap" | "warning" | "ok" | "no-data"
+}> {
+  const ctx = await getContext()
+  const mr = toSelectedMonthDate(mes_ref) ?? ""
+
+  const { rows } = await sql<{
+    mes_ref_used: string
+    worst_sev: number
+  }>`
+    WITH selected_month AS (
+      SELECT
+        CASE
+          WHEN ${mr} = '' THEN date_trunc('month', now())::date
+          ELSE to_date(${mr} || '-01', 'YYYY-MM-DD')
+        END AS m
+    ),
+    latest_exec_in_month AS (
+      SELECT DISTINCT ON (ke.kpi_id)
+        ke.kpi_id,
+        ke.auto_status::text AS auto_status
+      FROM kpi_executions ke
+      CROSS JOIN selected_month sm
+      WHERE ke.tenant_id = ${ctx.tenantId}
+        AND ke.control_id = ${controlId}
+        AND ke.period_start IS NOT NULL
+        AND date_trunc('month', ke.period_start)::date = sm.m
+      ORDER BY ke.kpi_id, ke.period_start DESC, ke.created_at DESC
+    )
+    SELECT
+      (SELECT to_char(m, 'YYYY-MM') FROM selected_month)::text AS mes_ref_used,
+      MAX(
+        CASE
+          WHEN lower(COALESCE(le.auto_status, '')) IN ('red', 'gap', 'critical', 'high', 'fail', 'failed', 'ineffective', 'inefetivo') THEN 3
+          WHEN lower(COALESCE(le.auto_status, '')) IN ('yellow', 'warning', 'warn', 'medium', 'moderate') THEN 2
+          WHEN lower(COALESCE(le.auto_status, '')) IN ('green', 'ok', 'pass', 'passed', 'success', 'effective', 'efetivo') THEN 1
+          ELSE 0
+        END
+      )::int AS worst_sev
+    FROM kpis k
+    LEFT JOIN latest_exec_in_month le ON le.kpi_id = k.id
+    WHERE k.tenant_id = ${ctx.tenantId}
+      AND k.control_id = ${controlId}
+  `
+
+  const mes_ref_used = rows?.[0]?.mes_ref_used ?? ""
+  const worst = rows?.[0]?.worst_sev ?? 0
+
+  const control_period_status =
+    worst === 3 ? "gap" : worst === 2 ? "warning" : worst === 1 ? "ok" : "no-data"
+
+  return { mes_ref_used, control_period_status }
+}
+
+// =============================
+// COMBINED
+// =============================
+
+export async function fetchControlById(controlId: string, mes_ref?: string | null) {
+  const [control, months, kpis, period] = await Promise.all([
+    fetchControlDetail(controlId),
+    fetchControlMonthsOptions(),
+    fetchKpisForControl(controlId, mes_ref),
+    fetchControlPeriodStatus(controlId, mes_ref),
+  ])
+
+  if (!control) throw new Error("Controle não existe ou não pertence ao tenant.")
+
+  return {
+    control,
+    months,
+    kpis,
+    mes_ref_used: period.mes_ref_used,
+    control_period_status: period.control_period_status,
+  }
+}
+
+// =============================
+// ACTION PLANS / HISTORY (mantidos)
+// =============================
 
 export async function fetchOpenActionPlansForControl(controlId: string): Promise<ActionPlanRow[]> {
   const ctx = await getContext()
@@ -123,10 +288,6 @@ export async function fetchOpenActionPlansForControl(controlId: string): Promise
   return rows
 }
 
-/**
- * Timeline simples (não depende de tabela de audit trail):
- * - últimos eventos de execução + criação de plano de ação
- */
 export async function fetchControlHistory(controlId: string): Promise<ControlHistoryRow[]> {
   const ctx = await getContext()
 
@@ -140,7 +301,7 @@ export async function fetchControlHistory(controlId: string): Promise<ControlHis
     SELECT
       e.created_at::text AS created_at,
       k.kpi_code::text AS kpi_code,
-      k.name::text AS kpi_name,
+      k.kpi_name::text AS kpi_name,
       e.auto_status::text AS auto_status,
       e.period_end::text AS period_end
     FROM kpi_executions e
@@ -189,7 +350,6 @@ export async function fetchControlHistory(controlId: string): Promise<ControlHis
     })
   }
 
-  // ordena por data desc
   items.sort((a, b) => (a.happened_at < b.happened_at ? 1 : -1))
   return items.slice(0, 12)
 }

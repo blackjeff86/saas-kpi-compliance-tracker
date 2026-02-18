@@ -1,3 +1,4 @@
+// app/(app)/execucoes/actions-auto-status.ts
 "use server"
 
 import { sql } from "@vercel/postgres"
@@ -12,6 +13,44 @@ const VALID_DB_STATUSES = new Set([
   "not_applicable",
 ])
 
+function normalizeToDbStatus(raw: string) {
+  const v = (raw || "").toLowerCase().trim()
+
+  // ✅ mapeia retornos comuns (ok/gap/cores etc) para o enum do banco
+  const map: Record<string, string> = {
+    ok: "in_target",
+    green: "in_target",
+    effective: "in_target",
+    pass: "in_target",
+    in_target: "in_target",
+
+    warning: "warning",
+    yellow: "warning",
+    warn: "warning",
+    med: "warning",
+    medium: "warning",
+    moderate: "warning",
+
+    gap: "out_of_target",
+    red: "out_of_target",
+    critical: "out_of_target",
+    fail: "out_of_target",
+    out: "out_of_target",
+    out_of_target: "out_of_target",
+
+    unknown: "unknown",
+    "no-data": "unknown",
+    nodata: "unknown",
+
+    not_applicable: "not_applicable",
+    "not-applicable": "not_applicable",
+    na: "not_applicable",
+    "n/a": "not_applicable",
+  }
+
+  return map[v] ?? v
+}
+
 export async function recomputeExecutionAutoStatus(executionId: string) {
   const ctx = await getContext()
 
@@ -19,6 +58,8 @@ export async function recomputeExecutionAutoStatus(executionId: string) {
     kpi_type: string | null
     target_operator: string | null
     target_value: number | null
+    target_boolean: boolean | null
+    warning_buffer_pct: number | null
     result_numeric: number | null
     result_boolean: boolean | null
   }>`
@@ -26,6 +67,8 @@ export async function recomputeExecutionAutoStatus(executionId: string) {
       k.kpi_type::text AS kpi_type,
       k.target_operator::text AS target_operator,
       k.target_value,
+      k.target_boolean,
+      k.warning_buffer_pct,
       e.result_numeric,
       e.result_boolean
     FROM kpi_executions e
@@ -38,9 +81,15 @@ export async function recomputeExecutionAutoStatus(executionId: string) {
   const r = rows[0]
   if (!r) throw new Error("Execução não encontrada (tenant).")
 
-  // Se não tem meta definida, podemos marcar como not_applicable
-  // (mantenha assim se você quer N/A quando target não existe)
-  if (r.target_value === null) {
+  // ✅ buffer vem do KPI (fallback 5%)
+  const buffer =
+    typeof r.warning_buffer_pct === "number" && Number.isFinite(r.warning_buffer_pct)
+      ? r.warning_buffer_pct
+      : 0.05
+
+  // ✅ sem meta => N/A
+  // (para boolean, você pode decidir: se target_boolean é null também vira N/A)
+  if (r.target_value === null && r.target_boolean === null) {
     await sql`
       UPDATE kpi_executions
       SET auto_status = 'not_applicable'
@@ -50,16 +99,24 @@ export async function recomputeExecutionAutoStatus(executionId: string) {
     return
   }
 
+  // ✅ calcula usando computeAutoStatus (mesma regra do sistema)
+  // Nota: computeAutoStatus atual usa target_value para boolean (>=1).
+  // Se você quiser suportar target_boolean real, ajustamos o auto-status.ts depois.
   const auto = computeAutoStatus(
-    { kpi_type: r.kpi_type, target_operator: r.target_operator, target_value: r.target_value },
-    { result_numeric: r.result_numeric, result_boolean: r.result_boolean },
-    0.05
+    {
+      kpi_type: r.kpi_type,
+      target_operator: r.target_operator,
+      target_value: r.target_value,
+    },
+    {
+      result_numeric: r.result_numeric,
+      result_boolean: r.result_boolean,
+    },
+    buffer
   )
 
-  const normalized = String(auto || "").toLowerCase()
-
-  // Garantia extra: nunca gravar algo fora do enum do banco
-  const safeAuto = VALID_DB_STATUSES.has(normalized) ? normalized : "unknown"
+  const mapped = normalizeToDbStatus(String(auto || "unknown"))
+  const safeAuto = VALID_DB_STATUSES.has(mapped) ? mapped : "unknown"
 
   await sql`
     UPDATE kpi_executions

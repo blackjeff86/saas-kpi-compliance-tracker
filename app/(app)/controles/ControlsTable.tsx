@@ -1,3 +1,4 @@
+// app/(app)/controles/ControlsTable.tsx
 "use client"
 
 import { useRouter } from "next/navigation"
@@ -15,7 +16,17 @@ type Row = {
   control_owner_email: string | null
   focal_point_name: string | null
   focal_point_email: string | null
+
+  /**
+   * ✅ Novo status de controle (do mês):
+   * critical | warning | overdue | pending | effective | not_applicable
+   */
   control_result: string | null
+
+  kpi_total: number
+  kpi_red: number
+  kpi_yellow: number
+  kpi_green: number
 }
 
 function riskBadge(v?: string | null) {
@@ -32,18 +43,54 @@ function frameworkPill() {
   return "bg-primary/10 text-primary"
 }
 
+function resultLabel(v?: string | null) {
+  const s = (v || "").toLowerCase()
+  if (s === "critical") return "Critical"
+  if (s === "warning") return "Warning"
+  if (s === "overdue") return "Overdue"
+  if (s === "pending") return "Pending"
+  if (s === "effective") return "Effective"
+  if (s === "not_applicable" || s === "not-applicable") return "Not applicable"
+  return "—"
+}
+
 function resultBadge(v?: string | null) {
   const s = (v || "").toLowerCase()
-  if (s === "gap" || s === "red") return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
-  if (s === "warning" || s === "yellow") return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-  if (s === "ok" || s === "green") return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
+
+  // 🔴 Critical (has red)
+  if (s === "critical") return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+
+  // 🟡 Warning (has yellow and no red)
+  if (s === "warning") return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+
+  // 🟠 Overdue (missing and month already passed)
+  if (s === "overdue") return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300"
+
+  // ⚪ Pending (waiting for execution)
+  if (s === "pending") return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+
+  // 🟢 Effective (all applicable KPIs are green)
+  if (s === "effective") return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
+
+  // 🚫 Not applicable (outside frequency cycle)
+  if (s === "not_applicable" || s === "not-applicable")
+    return "bg-slate-50 text-slate-500 border border-slate-200 dark:bg-slate-900/40 dark:text-slate-400 dark:border-slate-800"
+
   return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
 }
 
-export default function ControlsTable({ rows }: { rows: Row[] }) {
+function Dot({ kind }: { kind: "red" | "yellow" | "green" }) {
+  const cls = kind === "red" ? "bg-red-500" : kind === "yellow" ? "bg-yellow-500" : "bg-emerald-500"
+  return <span className={`inline-block w-1.5 h-1.5 rounded-full ${cls}`} />
+}
+
+export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?: string }) {
   const router = useRouter()
 
-  const go = (id: string) => router.push(`/controles/${id}`)
+  const go = (id: string) => {
+    const qs = mes_ref ? `?mes_ref=${encodeURIComponent(mes_ref)}` : ""
+    router.push(`/controles/${id}${qs}`)
+  }
 
   return (
     <div className="overflow-x-auto">
@@ -66,7 +113,7 @@ export default function ControlsTable({ rows }: { rows: Row[] }) {
               Focal Point
             </th>
             <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Resultado (mês)
+              Result (month)
             </th>
             <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
               Risco
@@ -90,13 +137,9 @@ export default function ControlsTable({ rows }: { rows: Row[] }) {
               <td className="px-4 py-3">
                 <div className="flex items-center gap-3">
                   <div className="mt-1 h-8 w-1 rounded-full bg-transparent group-hover:bg-primary/60 transition-colors" />
-
                   <div className="min-w-0">
-                    {/* Nome do controle agora: CODE | NAME */}
                     <div className="text-sm font-semibold text-slate-900 dark:text-white truncate">
-                      <span className="font-mono text-slate-500 dark:text-slate-400">
-                        {r.control_code}
-                      </span>
+                      <span className="font-mono text-slate-500 dark:text-slate-400">{r.control_code}</span>
                       <span className="mx-2 text-slate-300 dark:text-slate-700">|</span>
                       {r.name}
                     </div>
@@ -114,9 +157,7 @@ export default function ControlsTable({ rows }: { rows: Row[] }) {
                 )}
               </td>
 
-              <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200">
-                {r.frequency ?? "—"}
-              </td>
+              <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200">{r.frequency ?? "—"}</td>
 
               <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200">
                 {r.control_owner_name || r.control_owner_email || "—"}
@@ -127,14 +168,40 @@ export default function ControlsTable({ rows }: { rows: Row[] }) {
               </td>
 
               <td className="px-4 py-3">
-                <span
-                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${resultBadge(
-                    r.control_result
-                  )}`}
-                >
-                  <span className="w-1 h-1 rounded-full bg-current opacity-60 mr-1.5" />
-                  {r.control_result ?? "—"}
-                </span>
+                <div className="flex flex-col gap-1">
+                  <span
+                    className={`inline-flex w-fit items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${resultBadge(
+                      r.control_result
+                    )}`}
+                    title="Resultado do controle no mês (agregado por KPIs + frequência)"
+                  >
+                    <span className="w-1 h-1 rounded-full bg-current opacity-60 mr-1.5" />
+                    {resultLabel(r.control_result)}
+                  </span>
+
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-2">
+                    <span className="font-medium">
+                      KPIs: <span className="font-mono">{r.kpi_total ?? 0}</span>
+                    </span>
+
+                    <span className="text-slate-300 dark:text-slate-700">•</span>
+
+                    <span className="inline-flex items-center gap-1" title="Red">
+                      <Dot kind="red" />
+                      <span className="font-mono">{r.kpi_red ?? 0}</span>
+                    </span>
+
+                    <span className="inline-flex items-center gap-1" title="Yellow">
+                      <Dot kind="yellow" />
+                      <span className="font-mono">{r.kpi_yellow ?? 0}</span>
+                    </span>
+
+                    <span className="inline-flex items-center gap-1" title="Green">
+                      <Dot kind="green" />
+                      <span className="font-mono">{r.kpi_green ?? 0}</span>
+                    </span>
+                  </div>
+                </div>
               </td>
 
               <td className="px-4 py-3">

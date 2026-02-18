@@ -49,7 +49,7 @@ export default async function ControlesPage({
   const page = clampInt(pickFirst(sp.page), 1, 1, 99999)
 
   // ✅ agora SEMPRE começa no mês atual
-  const mes_ref = ((pickFirst(sp.mes_ref) ?? "").trim() || currentYYYYMM())
+  const mes_ref = (pickFirst(sp.mes_ref) ?? "").trim() || currentYYYYMM()
 
   const owner = (pickFirst(sp.owner) ?? "").trim()
   const focal = (pickFirst(sp.focal) ?? "").trim()
@@ -130,7 +130,8 @@ export default async function ControlesPage({
               </div>
             </div>
           ) : (
-            <ControlsTable rows={rows as any} />
+            // ✅ PASSA o mes_ref pra tabela montar os links mantendo o período
+            <ControlsTable rows={rows as any} mes_ref={mes_ref} />
           )}
 
           <div className="px-4 py-3 bg-white dark:bg-background-dark border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

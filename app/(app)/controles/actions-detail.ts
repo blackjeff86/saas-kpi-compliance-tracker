@@ -151,7 +151,7 @@ export async function fetchControlById(
       SELECT
         k.id,
         k.kpi_code,
-        k.name,
+        k.kpi_name,
         k.kpi_type::text AS kpi_type,
         k.target_operator::text AS target_operator,
         k.target_value,
@@ -199,7 +199,7 @@ export async function fetchControlById(
       SELECT
         k.id,
         k.kpi_code,
-        k.name,
+        k.kpi_name,
         k.kpi_type::text AS kpi_type,
         k.target_operator::text AS target_operator,
         k.target_value,
@@ -246,7 +246,7 @@ export async function fetchControlById(
     SELECT
       k.id,
       k.kpi_code,
-      k.name,
+      k.kpi_name,
       k.kpi_type::text AS kpi_type,
       k.target_operator::text AS target_operator,
       k.target_value,

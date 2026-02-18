@@ -25,8 +25,9 @@ function normOp(op?: string | null) {
     s === "gte" ||
     s === "ge" ||
     s === "gt_or_eq" ||
-    s.includes("greater") && s.includes("equal")
-  ) return "gte"
+    (s.includes("greater") && s.includes("equal"))
+  )
+    return "gte"
 
   // <=
   if (
@@ -34,8 +35,9 @@ function normOp(op?: string | null) {
     s === "lte" ||
     s === "le" ||
     s === "lt_or_eq" ||
-    s.includes("less") && s.includes("equal")
-  ) return "lte"
+    (s.includes("less") && s.includes("equal"))
+  )
+    return "lte"
 
   // =
   if (s === "=" || s === "eq" || s === "equals") return "eq"
@@ -59,16 +61,15 @@ export function computeAutoStatus(
   exec: ExecRow,
   bufferPct = 0.05
 ): AutoStatus {
-  const op = normOp(kpi.target_operator)
   const target = kpi.target_value
 
-  // sem meta => unknown (o action já converte pra not_applicable quando target_value é NULL)
+  // sem meta => unknown (o action pode converter pra not_applicable quando target_value é NULL)
   if (typeof target !== "number") return "unknown"
 
   // boolean: sem yellow
   if (isBooleanType(kpi.kpi_type)) {
     if (typeof exec.result_boolean !== "boolean") return "unknown"
-    const expected = target >= 1
+    const expected = target >= 1 // 1 = Sim / 0 = Não
     return exec.result_boolean === expected ? "in_target" : "out_of_target"
   }
 
@@ -76,8 +77,12 @@ export function computeAutoStatus(
   const val = exec.result_numeric
   if (typeof val !== "number") return "unknown"
 
+  // ✅ FIX: se não tiver operador definido, assume "quanto maior melhor"
+  const op = normOp(kpi.target_operator)
+  const opSafe = op === "unknown" ? "gte" : op
+
   // maior melhor
-  if (op === "gte") {
+  if (opSafe === "gte") {
     if (val >= target) return "in_target"
     const warnFloor = target * (1 - bufferPct)
     if (val >= warnFloor) return "warning"
@@ -85,7 +90,7 @@ export function computeAutoStatus(
   }
 
   // menor melhor
-  if (op === "lte") {
+  if (opSafe === "lte") {
     if (val <= target) return "in_target"
     const warnCeil = target * (1 + bufferPct)
     if (val <= warnCeil) return "warning"
@@ -93,7 +98,7 @@ export function computeAutoStatus(
   }
 
   // igualdade
-  if (op === "eq") return val === target ? "in_target" : "out_of_target"
+  if (opSafe === "eq") return val === target ? "in_target" : "out_of_target"
 
   return "unknown"
 }
