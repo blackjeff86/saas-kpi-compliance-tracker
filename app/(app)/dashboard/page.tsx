@@ -341,9 +341,13 @@ export default async function Page({
                     <div className="font-medium truncate">{p.title}</div>
                     <div className="text-xs text-slate-500">
                       {p.control_code ?? "—"} • {p.kpi_code ?? "—"} • execução{" "}
-                      <Link className="underline" href={`/execucoes/${p.execution_id}`}>
-                        {p.execution_id.slice(0, 8)}…
-                      </Link>
+                      {p.execution_id ? (
+                        <Link className="underline" href={`/execucoes/${p.execution_id}`}>
+                          {p.execution_id.slice(0, 8)}…
+                        </Link>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">

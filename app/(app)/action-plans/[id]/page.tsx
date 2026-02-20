@@ -2,24 +2,25 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 
 import PageContainer from "../../PageContainer"
+import TasksChecklistClient from "./TasksChecklistClient"
+import ActionPlanActionsButtonClient from "./ActionPlanActionsButtonClient"
 
-import { fetchActionPlanDetail } from "./actions"
+import {
+  fetchActionPlanDetail,
+  fetchActionPlanEditOptions,
+  fetchActionPlanEvents,
+  fetchActionPlanTasks,
+} from "./actions"
 
 import {
   ArrowLeft,
-  Download,
-  ChevronDown,
   CalendarDays,
-  User,
   Flag,
   FileText,
   CheckSquare,
   Clock3,
-  CheckCircle2,
-  Circle,
-  Paperclip,
-  PlusCircle,
-  Upload,
+  FilePlus2,
+  ListPlus,
   Sparkles,
 } from "lucide-react"
 
@@ -33,6 +34,29 @@ function formatDate(v?: string | null) {
     month: "short",
     year: "numeric",
   }).format(d)
+}
+
+function formatDateTime(v?: string | null) {
+  if (!v) return "—"
+  const d = new Date(v)
+  if (Number.isNaN(d.getTime())) return "—"
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d)
+}
+
+function parseEventMessage(metadata?: string | null) {
+  if (!metadata) return "Plano atualizado."
+  try {
+    const parsed = JSON.parse(metadata) as { message?: string }
+    return parsed.message?.trim() || "Plano atualizado."
+  } catch {
+    return "Plano atualizado."
+  }
 }
 
 function toMonthRefFromDate(v?: string | null) {
@@ -100,7 +124,7 @@ function progressFromStatus(s?: string | null) {
   if (v === "done") return 100
   if (v === "in_progress") return 75
   if (v === "blocked") return 30
-  return 10
+  return 0
 }
 
 function initialsFromName(name?: string | null) {
@@ -122,14 +146,95 @@ export default async function ActionPlanDetailPage({
 
   const plan = await fetchActionPlanDetail(id)
   if (!plan) return notFound()
+  const [tasks, events, editOptions] = await Promise.all([
+    fetchActionPlanTasks(id),
+    fetchActionPlanEvents(id),
+    fetchActionPlanEditOptions(),
+  ])
 
   const created = formatDate(plan.created_at ?? plan.updated_at)
   const due = formatDate(plan.due_date)
-  const progress = progressFromStatus(plan.status)
+  const totalTasks = tasks.length
+  const doneTasks = tasks.filter((t) => t.is_done).length
+  const progress =
+    totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : progressFromStatus(plan.status)
   const responsible = plan.responsible_name?.trim() || "Não definido"
   const titleCode = plan.id.slice(0, 8).toUpperCase()
   const sourceMonthRef = plan.mes_ref ?? toMonthRefFromDate(plan.created_at ?? plan.updated_at)
   const sourceMonthLabel = formatMonthRef(sourceMonthRef)
+
+  const evidenceUrl = plan.evidence_folder_url?.trim() || null
+
+  const timeline = [
+    {
+      id: "plan-updated",
+      at: plan.updated_at,
+      icon: <Clock3 className="h-3.5 w-3.5 text-primary" />,
+      bubble: "bg-primary/10",
+      title: "Plano atualizado",
+      description: `Status atual: ${statusLabel(plan.status)}.`,
+    },
+    {
+      id: "plan-created",
+      at: plan.created_at ?? plan.updated_at,
+      icon: <FilePlus2 className="h-3.5 w-3.5 text-emerald-700" />,
+      bubble: "bg-emerald-100",
+      title: "Plano criado",
+      description: `Plano registrado por ${responsible}.`,
+    },
+    ...events.map((event) => {
+      if (event.event_type === "plan_updated") {
+        return {
+          id: event.id,
+          at: event.created_at,
+          icon: <Clock3 className="h-3.5 w-3.5 text-primary" />,
+          bubble: "bg-primary/10",
+          title: "Plano atualizado",
+          description: parseEventMessage(event.metadata),
+        }
+      }
+      if (event.event_type === "task_completed") {
+        return {
+          id: event.id,
+          at: event.created_at,
+          icon: <CheckSquare className="h-3.5 w-3.5 text-emerald-700" />,
+          bubble: "bg-emerald-100",
+          title: "Tarefa concluída",
+          description: event.task_title ?? "—",
+        }
+      }
+      if (event.event_type === "task_reopened") {
+        return {
+          id: event.id,
+          at: event.created_at,
+          icon: <Clock3 className="h-3.5 w-3.5 text-amber-700" />,
+          bubble: "bg-amber-100",
+          title: "Tarefa reaberta",
+          description: event.task_title ?? "—",
+        }
+      }
+      if (event.event_type === "task_deleted") {
+        return {
+          id: event.id,
+          at: event.created_at,
+          icon: <Clock3 className="h-3.5 w-3.5 text-rose-700" />,
+          bubble: "bg-rose-100",
+          title: "Tarefa deletada",
+          description: event.task_title ?? "—",
+        }
+      }
+      return {
+        id: event.id,
+        at: event.created_at,
+        icon: <ListPlus className="h-3.5 w-3.5 text-slate-700" />,
+        bubble: "bg-slate-200",
+        title: "Tarefa adicionada",
+        description: event.task_title ?? "—",
+      }
+    }),
+  ]
+    .sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime())
+    .slice(0, 12)
 
   return (
     <PageContainer variant="default">
@@ -157,20 +262,19 @@ export default async function ActionPlanDetailPage({
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              <Download className="h-4 w-4" />
-              Exportar
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-95"
-            >
-              Ações
-              <ChevronDown className="h-4 w-4" />
-            </button>
+            <ActionPlanActionsButtonClient
+              plan={{
+                id: plan.id,
+                responsible_name: plan.responsible_name,
+                due_date: plan.due_date,
+                priority: plan.priority,
+                status: plan.status,
+                description: plan.description,
+                risk_id: plan.risk_id,
+                control_id: plan.control_id,
+              }}
+              options={editOptions}
+            />
           </div>
         </div>
 
@@ -179,7 +283,9 @@ export default async function ActionPlanDetailPage({
             <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Progresso Atual</div>
             <div className="mt-2 flex items-end justify-between">
               <div className="text-3xl font-extrabold text-slate-800">{progress}%</div>
-              <div className="text-xs font-semibold text-primary">{Math.round(progress / 12.5)}/8 tarefas</div>
+              <div className="text-xs font-semibold text-primary">
+                {doneTasks}/{totalTasks} tarefas
+              </div>
             </div>
             <div className="mt-2 h-2 rounded-full bg-slate-200">
               <div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} />
@@ -238,6 +344,26 @@ export default async function ActionPlanDetailPage({
                   <div className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Descrição</div>
                   <p className="leading-relaxed">{plan.description ?? "Sem descrição cadastrada."}</p>
                 </div>
+
+                <div>
+                  <div className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Evidências</div>
+                  {evidenceUrl ? (
+                    <div className="space-y-1">
+                      <div className="text-slate-600">Pasta vinculada:</div>
+                      <a
+                        className="font-semibold text-primary hover:underline"
+                        href={evidenceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        abrir pasta de evidências
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="text-slate-500">Não definida.</div>
+                  )}
+                </div>
+
                 <div>
                   <div className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Origem</div>
                   <div className="space-y-1">
@@ -263,40 +389,12 @@ export default async function ActionPlanDetailPage({
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-                <div className="flex items-center gap-2 font-semibold text-slate-800">
-                  <CheckSquare className="h-4 w-4 text-primary" />
-                  Checklist de Tarefas
-                </div>
-                <button type="button" className="text-xs font-semibold text-primary hover:underline">
-                  Ver todas
-                </button>
-              </div>
-              <div className="space-y-4 p-5 text-sm">
-                <div className="flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" />
-                  <div>
-                    <div className="font-semibold text-slate-700 line-through">Mapeamento de dados sensíveis</div>
-                    <div className="text-xs text-slate-500">Concluído por {responsible}</div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" />
-                  <div>
-                    <div className="font-semibold text-slate-700 line-through">Revisão de contratos com operadores</div>
-                    <div className="text-xs text-slate-500">Concluído pelo time GRC</div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <Circle className="mt-0.5 h-4 w-4 text-slate-300" />
-                  <div>
-                    <div className="font-semibold text-slate-700">Atualizar evidências no repositório</div>
-                    <div className="text-xs text-slate-500">Pendente</div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <TasksChecklistClient
+              actionPlanId={plan.id}
+              defaultResponsibleName={responsible}
+              tasks={tasks}
+              evidenceFolderUrl={evidenceUrl}
+            />
           </div>
 
           <div className="space-y-5">
@@ -329,73 +427,22 @@ export default async function ActionPlanDetailPage({
                 Timeline de Atividades
               </div>
               <div className="space-y-5 p-5 text-sm">
-                <div className="flex gap-3">
-                  <div className="mt-1 rounded-full bg-primary/10 p-1.5">
-                    <Clock3 className="h-3.5 w-3.5 text-primary" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-slate-800">Status alterado</div>
-                    <div className="text-slate-600">
-                      Status modificado para <b>{statusLabel(plan.status)}</b>.
+                {timeline.length === 0 ? (
+                  <div className="text-slate-500">Sem atividades recentes.</div>
+                ) : (
+                  timeline.map((event) => (
+                    <div key={event.id} className="flex gap-3">
+                      <div className={`mt-1 rounded-full p-1.5 ${event.bubble}`}>{event.icon}</div>
+                      <div>
+                        <div className="font-semibold text-slate-800">{event.title}</div>
+                        <div className="text-slate-600">{event.description}</div>
+                        <div className="text-xs text-slate-400">{formatDateTime(event.at)}</div>
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-400">Hoje, 16:30</div>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <div className="mt-1 rounded-full bg-emerald-100 p-1.5">
-                    <Paperclip className="h-3.5 w-3.5 text-emerald-700" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-slate-800">Evidência vinculada</div>
-                    <div className="text-slate-600">Documento anexado à execução vinculada.</div>
-                    <div className="text-xs text-slate-400">Ontem, 09:15</div>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <div className="mt-1 rounded-full bg-slate-200 p-1.5">
-                    <User className="h-3.5 w-3.5 text-slate-600" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-slate-800">Plano criado</div>
-                    <div className="text-slate-600">Plano registrado por {responsible}.</div>
-                    <div className="text-xs text-slate-400">{created}</div>
-                  </div>
-                </div>
+                  ))
+                )}
               </div>
             </div>
-          </div>
-        </div>
-
-        <div className="sticky bottom-0 z-10 mt-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-            >
-              <PlusCircle className="h-4 w-4" />
-              Adicionar Tarefa
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-            >
-              <Upload className="h-4 w-4" />
-              Subir Evidência
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100"
-            >
-              Descartar
-            </button>
-            <button
-              type="button"
-              className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white hover:opacity-95"
-            >
-              Salvar Alterações
-            </button>
           </div>
         </div>
       </div>

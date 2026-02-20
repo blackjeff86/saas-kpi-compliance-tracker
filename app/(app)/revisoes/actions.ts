@@ -26,7 +26,7 @@ export async function fetchGrcQueue(): Promise<GrcQueueRow[]> {
       c.control_code,
       c.name AS control_name,
       k.kpi_code,
-      k.name AS kpi_name,
+      k.kpi_name AS kpi_name,
       e.period_start::text AS period_start,
       e.period_end::text AS period_end,
       e.workflow_status::text AS workflow_status,
