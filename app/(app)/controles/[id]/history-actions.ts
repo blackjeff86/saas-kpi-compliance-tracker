@@ -20,8 +20,7 @@ type RawRow = {
   created_at: string
   metadata: string | null
 
-  actor_name: string | null
-  actor_email: string | null
+  actor_label: string | null
 
   kpi_code: string | null
   kpi_name: string | null
@@ -60,6 +59,115 @@ function humanStatus(s?: string | null) {
   return fmtVal(s)
 }
 
+function labelForField(entityType: string, field: string): string {
+  const e = (entityType || "").toLowerCase()
+  const f = (field || "").toLowerCase()
+
+  // CONTROL
+  if (e === "control") {
+    if (f === "control_code") return "ID do Controle"
+    if (f === "name") return "Nome"
+    if (f === "description") return "Descrição"
+    if (f === "goal") return "Objetivo"
+    if (f === "status") return "Status"
+    if (f === "frequency") return "Frequência"
+    if (f === "control_type") return "Tipo"
+    if (f === "control_owner_email") return "Owner (email)"
+    if (f === "control_owner_name") return "Owner (nome)"
+    if (f === "focal_point_email") return "Focal (email)"
+    if (f === "focal_point_name") return "Focal (nome)"
+    if (f === "framework") return "Framework"
+    if (f === "risk_code") return "Risk code"
+    if (f === "risk_name") return "Risk name"
+    if (f === "risk_description") return "Risk description"
+    if (f === "risk_classification") return "Risk classification"
+  }
+
+  // KPI
+  if (e === "kpi") {
+    if (f === "kpi_name") return "Nome"
+    if (f === "kpi_description") return "Descrição"
+    if (f === "kpi_type") return "Tipo"
+    if (f === "target_operator") return "Operador"
+    if (f === "target_value") return "Meta"
+    if (f === "warning_buffer_pct") return "Warning buffer"
+    if (f === "control_id") return "Vinculado ao controle"
+  }
+
+  return field
+}
+
+function formatKpiFieldValue(field: string, value: any) {
+  const f = (field || "").toLowerCase()
+  if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) return "—"
+
+  // warning_buffer_pct: 0.05 -> 5%
+  if (f === "warning_buffer_pct") {
+    const n = Number(value)
+    if (!Number.isFinite(n)) return fmtVal(value)
+    return `${Math.round(n * 10000) / 100}%`
+  }
+
+  // kpi_type
+  if (f === "kpi_type") {
+    const s = String(value).toLowerCase()
+    if (s === "number") return "Numérico"
+    if (s === "percent") return "Percentual"
+    if (s === "boolean") return "Booleano"
+    return fmtVal(value)
+  }
+
+  // target_operator
+  if (f === "target_operator") {
+    const s = String(value).toLowerCase()
+    if (s === "gte") return "≥"
+    if (s === "lte") return "≤"
+    if (s === "eq") return "="
+    return fmtVal(value)
+  }
+
+  return fmtVal(value)
+}
+
+function summarizeObjectChanges(meta: any, entityType: string, baseTitle: string) {
+  const summary = typeof meta?.summary === "string" ? meta.summary.trim() : ""
+  if (summary) return summary
+
+  // suporte a 2 formatos:
+  // 1) meta.changes = [{ field, from, to }]
+  // 2) meta.changes = { field: {from,to}, ... }  (como no actions.ts que te mandei pro control)
+  let changesArr: Array<{ field: string; from: any; to: any }> = []
+
+  if (Array.isArray(meta?.changes)) {
+    changesArr = meta.changes
+      .map((c: any) => ({
+        field: String(c?.field || c?.key || ""),
+        from: c?.from,
+        to: c?.to,
+      }))
+      .filter((c: any) => c.field)
+  } else if (meta?.changes && typeof meta.changes === "object") {
+    changesArr = Object.entries(meta.changes).map(([field, v]: any) => ({
+      field,
+      from: v?.from,
+      to: v?.to,
+    }))
+  }
+
+  if (!changesArr.length) return null
+
+  const parts = changesArr.map((c) => {
+    const label = labelForField(entityType, c.field)
+    const fromV = entityType === "kpi" ? formatKpiFieldValue(c.field, c.from) : fmtVal(c.from)
+    const toV = entityType === "kpi" ? formatKpiFieldValue(c.field, c.to) : fmtVal(c.to)
+    return `${label}: ${fromV} → ${toV}`
+  })
+
+  const text = parts.join("; ")
+  if (text.length > 200) return `${baseTitle} (${changesArr.length} campos)`
+  return `${baseTitle}: ${text}`
+}
+
 function buildSummary(row: RawRow) {
   const entityType = (row.entity_type || "").toLowerCase()
   const action = (row.action || "").toLowerCase()
@@ -88,7 +196,7 @@ function buildSummary(row: RawRow) {
     return `${verb} • ${kpiLabel} (período: ${periodo}, resultado: ${fmtVal(resNum)}, status: ${st})`
   }
 
-  // ✅ KPI config updated
+  // ✅ KPI config updated (evento dedicado antigo)
   if (entityType === "kpi" && action === "kpi_config_updated") {
     const bType = fmtVal(before?.kpi_type)
     const aType = fmtVal(after?.kpi_type)
@@ -99,26 +207,35 @@ function buildSummary(row: RawRow) {
     const bTv = fmtVal(before?.target_value)
     const aTv = fmtVal(after?.target_value)
 
-    const bWarn =
-      before?.warning_buffer_pct !== undefined ? `${Number(before.warning_buffer_pct) * 100}%` : "—"
-    const aWarn =
-      after?.warning_buffer_pct !== undefined ? `${Number(after.warning_buffer_pct) * 100}%` : "—"
+    const bWarn = before?.warning_buffer_pct !== undefined ? `${Number(before.warning_buffer_pct) * 100}%` : "—"
+    const aWarn = after?.warning_buffer_pct !== undefined ? `${Number(after.warning_buffer_pct) * 100}%` : "—"
 
     return `Configuração do KPI atualizada • ${kpiLabel} (tipo: ${bType} → ${aType}, meta: ${bOp} ${bTv} → ${aOp} ${aTv}, warning: ${bWarn} → ${aWarn})`
   }
 
+  // ✅ KPI created/updated/deleted
   if (entityType === "kpi" && (action === "created" || action === "kpi_created")) {
     return `KPI criado • ${kpiLabel}`
   }
+
   if (entityType === "kpi" && (action === "updated" || action === "kpi_updated")) {
-    return `KPI atualizado • ${kpiLabel}`
+    // ✅ se o audit vier com changes/before/after => mostra delta
+    const s = summarizeObjectChanges(meta, "kpi", `KPI atualizado • ${kpiLabel}`)
+    return s || `KPI atualizado • ${kpiLabel}`
   }
+
   if (entityType === "kpi" && action === "deleted") {
     return `KPI removido • ${kpiLabel}`
   }
 
+  // ✅ CONTROL created/updated/deleted
   if (entityType === "control" && action === "created") return `Controle criado`
-  if (entityType === "control" && action === "updated") return `Controle atualizado`
+
+  if (entityType === "control" && action === "updated") {
+    const s = summarizeObjectChanges(meta, "control", "Controle atualizado")
+    return s || `Controle atualizado`
+  }
+
   if (entityType === "control" && action === "deleted") return `Controle removido`
 
   return `${entityType.toUpperCase()} • ${row.action}`
@@ -135,8 +252,11 @@ export async function fetchControlHistory(controlId: string): Promise<ControlHis
       ae.created_at::text AS created_at,
       ae.metadata::text AS metadata,
 
-      u.name::text AS actor_name,
-      u.email::text AS actor_email,
+      -- ✅ Regra: sem auth => actor_user_id = NULL => actor_label = NULL (UI mostra "Sistema")
+      CASE
+        WHEN ae.actor_user_id IS NULL THEN NULL
+        ELSE COALESCE(NULLIF(btrim(u.name::text), ''), NULLIF(btrim(u.email::text), ''), NULL)
+      END::text AS actor_label,
 
       k.kpi_code::text AS kpi_code,
       k.kpi_name::text AS kpi_name
@@ -163,18 +283,11 @@ export async function fetchControlHistory(controlId: string): Promise<ControlHis
   `
 
   return (rows ?? []).map((r) => {
-    const actor =
-      r.actor_name && r.actor_name.trim()
-        ? r.actor_name
-        : r.actor_email && r.actor_email.trim()
-        ? r.actor_email
-        : null
-
     return {
       id: r.id,
       entity_type: (r.entity_type || "") as any,
       summary: buildSummary(r),
-      actor,
+      actor: r.actor_label && r.actor_label.trim() ? r.actor_label : null,
       created_at: r.created_at,
       action: r.action,
     }

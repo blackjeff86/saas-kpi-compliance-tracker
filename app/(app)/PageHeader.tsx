@@ -20,7 +20,7 @@ export default function PageHeader({
           </div>
         ) : null}
 
-        <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
           {title}
         </h1>
 

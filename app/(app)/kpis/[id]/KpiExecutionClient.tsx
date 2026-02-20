@@ -18,7 +18,7 @@ import {
 } from "lucide-react"
 
 import type { KpiDetail, KpiExecutionForMonth, KpiHistoryRow } from "./actions"
-import { upsertKpiExecutionForMonth, updateKpiConfig } from "./actions"
+import { upsertKpiExecutionForMonth, updateKpiConfig, createActionPlanForKpi } from "./actions"
 
 function safe(v: any) {
   return String(v ?? "").trim()
@@ -112,6 +112,8 @@ function autoStatusBoxClass(v?: string | null) {
 type KpiMetaType = "percent" | "number" | "boolean"
 type KpiDirection = "higher_better" | "lower_better" | "yes_no"
 
+type ActionPriority = "low" | "medium" | "high" | "critical"
+
 export default function KpiExecutionClient(props: {
   kpi: KpiDetail
   mes_ref_used: string // YYYY-MM
@@ -136,6 +138,15 @@ export default function KpiExecutionClient(props: {
   const [q, setQ] = useState<string>("")
 
   const [configOpen, setConfigOpen] = useState(false)
+
+  // ✅ Plano de ação (obrigatório quando abaixo da meta)
+  const [apOpen, setApOpen] = useState(false)
+  const [apTitle, setApTitle] = useState("")
+  const [apDescription, setApDescription] = useState("")
+  const [apResponsible, setApResponsible] = useState("")
+  const [apDueDate, setApDueDate] = useState("") // yyyy-mm-dd
+  const [apPriority, setApPriority] = useState<ActionPriority>("medium")
+  const [actionPlanRegistered, setActionPlanRegistered] = useState(false)
 
   const [metaType, setMetaType] = useState<KpiMetaType>(() => {
     const t = String((kpi as any)?.kpi_type ?? "").toLowerCase()
@@ -219,6 +230,10 @@ export default function KpiExecutionClient(props: {
     })
   }, [isActive, activeTargetOperator, activeTargetValue, (kpi as any).warning_buffer_pct, resultNumeric])
 
+  const shouldRequireActionPlan = useMemo(() => {
+    return String(liveStatus).toLowerCase() === "out_of_target"
+  }, [liveStatus])
+
   const filteredHistory = useMemo(() => {
     const qq = safe(q).toLowerCase()
     if (!qq) return history
@@ -228,16 +243,42 @@ export default function KpiExecutionClient(props: {
     })
   }, [q, history])
 
-  async function onSave() {
-    setMsg("")
+  function openActionPlanModal() {
     setErr("")
+    setMsg("")
+
+    setApTitle("")
+    setApDescription("")
+    setApResponsible("")
+    setApDueDate("")
+    setApPriority("medium")
+
+    setApOpen(true)
+  }
+
+  function validateActionPlan() {
+    if (!safe(apTitle)) return "Informe o título do plano de ação."
+    if (!safe(apDueDate)) return "Informe a data estimada de conclusão."
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(safe(apDueDate))) return "Data inválida. Use o formato AAAA-MM-DD."
+    return null
+  }
+
+  function validateResult() {
+    const t = safe(resultText)
+    const parsed = t === "" ? null : Number(t)
+    if (t !== "" && Number.isNaN(parsed)) return "Resultado inválido. Use apenas números (ex: 96.5)."
+    return null
+  }
+
+  async function doSaveExecutionOnly() {
+    const v = validateResult()
+    if (v) {
+      setErr(v)
+      return
+    }
 
     const t = safe(resultText)
     const parsed = t === "" ? null : Number(t)
-    if (t !== "" && Number.isNaN(parsed)) {
-      setErr("Resultado inválido. Use apenas números (ex: 96.5).")
-      return
-    }
 
     startTransition(async () => {
       try {
@@ -248,10 +289,58 @@ export default function KpiExecutionClient(props: {
           result_notes: safe(notes) ? notes : null,
         })
 
-        setMsg(`Salvo com sucesso. Execução: ${resp.executionId}`)
+        setMsg(`Salvo com sucesso. Execução: ${resp.executionId ?? "OK"}`)
         router.refresh()
       } catch (e: any) {
         setErr(e?.message || "Falha ao salvar execução.")
+      }
+    })
+  }
+
+  async function onSave() {
+    setMsg("")
+    setErr("")
+
+    // ✅ regra: se abaixo da meta, obrigatório criar AP antes de salvar
+    if (shouldRequireActionPlan && !actionPlanRegistered) {
+      openActionPlanModal()
+      return
+    }
+
+    await doSaveExecutionOnly()
+  }
+
+  async function onSaveActionPlanOnly() {
+    setErr("")
+    setMsg("")
+
+    const vPlan = validateActionPlan()
+    if (vPlan) {
+      setErr(vPlan)
+      return
+    }
+
+    const finalDescription = safe(apDescription) ? safe(apDescription) : null
+
+    startTransition(async () => {
+      try {
+        const ap = await createActionPlanForKpi({
+          execution_id: execution.execution_id ?? null,
+          control_id: kpi.control_id,
+          kpi_id: kpi.kpi_id,
+          title: safe(apTitle),
+          description: finalDescription,
+          responsible: safe(apResponsible) ? safe(apResponsible) : null,
+          due_date: safe(apDueDate),
+          priority: apPriority,
+        })
+
+        setApOpen(false)
+        setActionPlanRegistered(true)
+
+        setMsg(`Plano de Ação criado (${ap?.id ?? "OK"}).`)
+      } catch (e: any) {
+        setErr(e?.message || "Falha ao salvar plano de ação.")
       }
     })
   }
@@ -469,10 +558,10 @@ export default function KpiExecutionClient(props: {
                 onClick={onSave}
                 disabled={isPending}
                 className="inline-flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg font-medium text-sm hover:opacity-95 transition disabled:opacity-60"
-                title="Salvar alterações"
+                title={shouldRequireActionPlan ? "Obrigatório criar Plano de Ação para salvar" : "Salvar alterações"}
               >
                 {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Salvar
+                {shouldRequireActionPlan ? "Salvar (exige Plano de Ação)" : "Salvar"}
               </button>
             </div>
 
@@ -514,13 +603,38 @@ export default function KpiExecutionClient(props: {
                   </div>
                   <p className="text-xs text-slate-400">
                     Regra atual: buffer{" "}
-                    {(((typeof (kpi as any).warning_buffer_pct === "number" ? (kpi as any).warning_buffer_pct : 0.05) as number) *
-                      100
+                    {(
+                      ((typeof (kpi as any).warning_buffer_pct === "number"
+                        ? (kpi as any).warning_buffer_pct
+                        : 0.05) as number) * 100
                     ).toFixed(0)}
                     %. {isActive ? "" : "KPI desativado (is_active=false): meta ignorada."}
                   </p>
                 </div>
               </div>
+
+              {/* ✅ obrigatório quando abaixo da meta */}
+              {shouldRequireActionPlan ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-red-800">KPI abaixo da meta</p>
+                      <p className="text-sm text-red-700 mt-0.5">
+                        É obrigatório registrar um plano de ação, pois este KPI está abaixo da meta esperada.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={openActionPlanModal}
+                      className="shrink-0 inline-flex items-center gap-2 rounded-lg bg-red-700 text-white px-4 py-2 text-sm font-semibold hover:opacity-95"
+                    >
+                      <Pencil className="w-4 h-4" />
+                      Criar Plano de Ação
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               {/* Evidência (placeholder) */}
               <div className="space-y-2">
@@ -573,7 +687,6 @@ export default function KpiExecutionClient(props: {
                 </p>
               </div>
 
-              {/* ✅ NOVO: dica para boolean no card de apoio */}
               {isBooleanKpi ? (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                   <span className="font-semibold">Dica (Sim/Não):</span> preencha <b>Sim = 1</b> e <b>Não = 0</b>.
@@ -611,6 +724,121 @@ export default function KpiExecutionClient(props: {
           </div>
         </div>
       </div>
+
+      {/* Modal para Plano de Ação */}
+      {apOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setApOpen(false)} aria-hidden="true" />
+
+          <div className="relative z-10 w-[95vw] max-w-2xl rounded-2xl bg-white shadow-xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="min-w-0">
+                <h4 className="text-base font-bold text-slate-900 truncate">Plano de Ação</h4>
+                <p className="text-xs text-slate-500 mt-0.5 truncate">
+                  KPI <span className="font-mono">{kpi.kpi_code}</span> • {formatMonthLabel(mes_ref_used)}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setApOpen(false)}
+                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-2 py-2 text-slate-600"
+                title="Fechar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {shouldRequireActionPlan ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  É obrigatório registrar um plano de ação, pois este KPI está abaixo da meta esperada.
+                </div>
+              ) : null}
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">Título</label>
+                <input
+                  className="w-full bg-white border border-slate-200 rounded-lg py-2.5 px-3 focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                  value={apTitle}
+                  onChange={(e) => setApTitle(e.target.value)}
+                  placeholder="Ex.: Ajustar checklist da coleta de evidências"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">Descrição do plano de ação</label>
+                <textarea
+                  className="w-full min-h-[110px] bg-white border border-slate-200 rounded-lg py-2.5 px-3 focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all resize-y"
+                  value={apDescription}
+                  onChange={(e) => setApDescription(e.target.value)}
+                  placeholder="Descreva as ações que serão executadas para recuperar o KPI."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">Responsável pela execução</label>
+                <input
+                  className="w-full bg-white border border-slate-200 rounded-lg py-2.5 px-3 focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                  value={apResponsible}
+                  onChange={(e) => setApResponsible(e.target.value)}
+                  placeholder="Ex.: maria@empresa.com ou Maria Silva"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700">Data estimada de conclusão</label>
+                  <input
+                    className="w-full bg-white border border-slate-200 rounded-lg py-2.5 px-3 focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                    type="date"
+                    value={apDueDate}
+                    onChange={(e) => setApDueDate(e.target.value)}
+                  />
+                  <p className="text-xs text-slate-500">Obrigatório.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700">Prioridade</label>
+                  <select
+                    className="w-full bg-white border border-slate-200 rounded-lg py-2.5 px-3 focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                    value={apPriority}
+                    onChange={(e) => setApPriority(e.target.value as ActionPriority)}
+                  >
+                    <option value="low">Baixa</option>
+                    <option value="medium">Média</option>
+                    <option value="high">Alta</option>
+                    <option value="critical">Crítica</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setApOpen(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-sm font-medium"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onSaveActionPlanOnly}
+                  disabled={isPending}
+                  className={[
+                    "px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium transition",
+                    isPending ? "opacity-60 cursor-not-allowed" : "hover:opacity-95",
+                  ].join(" ")}
+                  title="Salvar"
+                >
+                  {isPending ? "Salvando..." : "Salvar Plano de Ação"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Modal para Configuração do KPI */}
       {configOpen ? (
@@ -709,7 +937,6 @@ export default function KpiExecutionClient(props: {
                     <option value="number">Numérico</option>
                     <option value="boolean">Sim / Não</option>
                   </select>
-                  <p className="text-xs text-slate-500">Depois isso vira kpi_type.</p>
                 </div>
 
                 {/* Warning buffer */}
@@ -742,7 +969,6 @@ export default function KpiExecutionClient(props: {
                     <option value="lower_better">Quanto menor, melhor</option>
                     <option value="yes_no">Sim / Não</option>
                   </select>
-                  <p className="text-xs text-slate-500">Isso vira target_operator (gte/lte) ou boolean.</p>
                 </div>
               </div>
 
@@ -752,7 +978,8 @@ export default function KpiExecutionClient(props: {
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-slate-500 uppercase">Prévia do cálculo</p>
                     <p className="text-sm text-slate-700 mt-1">
-                      Operador: <span className="font-mono">{direction === "yes_no" ? "boolean" : previewOperator}</span> • Meta:{" "}
+                      Operador: <span className="font-mono">{direction === "yes_no" ? "boolean" : previewOperator}</span> •
+                      Meta:{" "}
                       <span className="font-mono">
                         {metaType === "boolean"
                           ? safe(targetText) === "0"

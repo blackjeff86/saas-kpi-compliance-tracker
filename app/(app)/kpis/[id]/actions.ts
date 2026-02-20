@@ -901,3 +901,155 @@ export async function updateKpiConfig(args: {
 
   return { ok: true }
 }
+
+// =============================
+// ✅ NOVO: ACTION PLAN (para KPI abaixo da meta)
+// =============================
+
+export type CreateActionPlanForKpiInput = {
+  execution_id: string | null
+  control_id: string
+  kpi_id: string
+
+  title: string
+  description: string | null
+  responsible: string | null
+
+  due_date: string // YYYY-MM-DD
+  priority: "low" | "medium" | "high" | "critical"
+}
+
+/**
+ * ✅ Cria um plano de ação vinculado ao KPI / execução do mês.
+ */
+export async function createActionPlanForKpi(input: CreateActionPlanForKpiInput) {
+  const ctx = await getContext()
+  const tenantId = (ctx as any).tenantId ?? (ctx as any).tenant_id ?? (ctx as any).tenantId
+
+  if (!tenantId) throw new Error("Tenant não encontrado no contexto.")
+  if (!input?.control_id) throw new Error("control_id é obrigatório.")
+  if (!input?.kpi_id) throw new Error("kpi_id é obrigatório.")
+  if (!norm(input?.title)) throw new Error("Título do plano de ação é obrigatório.")
+  if (!norm(input?.due_date)) throw new Error("Data estimada de conclusão é obrigatória.")
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(norm(input.due_date))) {
+    throw new Error("due_date inválido. Use YYYY-MM-DD.")
+  }
+
+  const responsible = norm(input?.responsible) || null
+  let ownerUserId: string | null = null
+
+  if (responsible) {
+    const byEmail = await sql<{ id: string }>`
+      SELECT id::text AS id
+      FROM users
+      WHERE tenant_id = ${tenantId}
+        AND lower(email::text) = lower(${responsible})
+      LIMIT 1
+    `
+    if (byEmail.rows?.[0]?.id) {
+      ownerUserId = byEmail.rows[0].id
+    } else {
+      const byName = await sql<{ id: string }>`
+        SELECT id::text AS id
+        FROM users
+        WHERE tenant_id = ${tenantId}
+          AND lower(name::text) = lower(${responsible})
+        ORDER BY created_at DESC
+        LIMIT 2
+      `
+      if (byName.rows.length === 1) {
+        ownerUserId = byName.rows[0].id
+      }
+    }
+  }
+
+  // garante que control/kpi pertencem ao tenant (defensivo)
+  const guard = await sql<{ ok: number }>`
+    SELECT 1 AS ok
+    FROM kpis k
+    JOIN controls c ON c.id = k.control_id
+    WHERE k.tenant_id = ${tenantId}
+      AND c.tenant_id = ${tenantId}
+      AND k.id = ${input.kpi_id}::uuid
+      AND c.id = ${input.control_id}::uuid
+    LIMIT 1
+  `
+  if (!guard.rows?.[0]?.ok) {
+    throw new Error("KPI/Controle inválido ou não pertence ao tenant.")
+  }
+
+  const ins = await sql<{ id: string }>`
+    INSERT INTO action_plans (
+      tenant_id,
+      execution_id,
+      control_id,
+      kpi_id,
+      title,
+      description,
+      responsible_name,
+      owner_user_id,
+      due_date,
+      priority,
+      status,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      ${tenantId}::uuid,
+      ${input.execution_id ? (input.execution_id as any) : null}::uuid,
+      ${input.control_id}::uuid,
+      ${input.kpi_id}::uuid,
+      ${input.title},
+      ${input.description},
+      ${responsible},
+      ${ownerUserId ? ownerUserId : null}::uuid,
+      ${input.due_date}::date,
+      ${input.priority}::action_priority,
+      'not_started'::action_status,
+      now(),
+      now()
+    )
+    RETURNING id::text AS id
+  `
+
+  const actionPlanId = ins.rows?.[0]?.id
+  if (!actionPlanId) throw new Error("Falha ao criar plano de ação.")
+
+  // audit_events (mantendo padrão)
+  await sql`
+    INSERT INTO audit_events (
+      tenant_id,
+      entity_type,
+      entity_id,
+      action,
+      actor_user_id,
+      metadata,
+      created_at
+    )
+    VALUES (
+      ${tenantId}::uuid,
+      'action_plan',
+      ${actionPlanId}::uuid,
+      'action_plan_created',
+      NULL,
+      ${JSON.stringify({
+        linked: {
+          execution_id: input.execution_id,
+          control_id: input.control_id,
+          kpi_id: input.kpi_id,
+        },
+        fields: {
+          title: input.title,
+          responsible: responsible,
+          responsible_name: responsible,
+          owner_user_id: ownerUserId,
+          due_date: input.due_date,
+          priority: input.priority,
+        },
+      })}::jsonb,
+      now()
+    )
+  `
+
+  return { id: actionPlanId }
+}

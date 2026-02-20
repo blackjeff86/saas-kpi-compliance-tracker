@@ -26,12 +26,12 @@ export type ControlRow = {
   focal_point_email: string | null
 
   /**
-   * ✅ NOVO: status do controle no mês (agregado pelos KPIs aplicáveis)
+   * ✅ status do controle no mês (agregado pelos KPIs aplicáveis)
    * critical | warning | overdue | pending | effective | not_applicable
    */
   control_result: string | null
 
-  // ✅ NOVO: contadores de KPIs associados ao controle (no mês)
+  // ✅ contadores de KPIs associados ao controle (no mês)
   kpi_total: number
   kpi_red: number
   kpi_yellow: number
@@ -140,9 +140,6 @@ export async function fetchControlsFilterOptions(): Promise<{
 
 // =============================
 // LISTAGEM / FILTROS
-// - mes_ref controla o "mês do cálculo do status"
-// - KPI status final: green | yellow | red | pending | overdue | not_applicable
-// - Control status final: critical | warning | overdue | pending | effective | not_applicable
 // =============================
 
 export async function fetchControlsPage(
@@ -222,15 +219,18 @@ export async function fetchControlsPage(
         AND date_trunc('month', ke.period_start)::date = sm.m
       ORDER BY ke.kpi_id, ke.period_start DESC, ke.created_at DESC
     ),
+
     kpi_month_status AS (
       SELECT
         c.id AS control_id,
         k.id AS kpi_id,
-        -- aplicabilidade por frequência
+
+        -- ✅ aplicabilidade por frequência (agora com daily/weekly/monthly/on_demand)
         CASE
+          WHEN lower(COALESCE(c.frequency::text,'')) IN ('daily','weekly','monthly','on_demand') THEN true
           WHEN lower(COALESCE(c.frequency::text,'')) IN ('quarterly') THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,4,7,11))
           WHEN lower(COALESCE(c.frequency::text,'')) IN ('semiannual') THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,7))
-          WHEN lower(COALESCE(c.frequency::text,'')) IN ('annual','yearly') THEN (EXTRACT(MONTH FROM sm.m)::int IN (10,11,12))
+          WHEN lower(COALESCE(c.frequency::text,'')) IN ('annual') THEN (EXTRACT(MONTH FROM sm.m)::int IN (10,11,12))
           ELSE true
         END AS is_applicable,
 
@@ -240,9 +240,10 @@ export async function fetchControlsPage(
         CASE
           WHEN NOT (
             CASE
+              WHEN lower(COALESCE(c.frequency::text,'')) IN ('daily','weekly','monthly','on_demand') THEN true
               WHEN lower(COALESCE(c.frequency::text,'')) IN ('quarterly') THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,4,7,11))
               WHEN lower(COALESCE(c.frequency::text,'')) IN ('semiannual') THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,7))
-              WHEN lower(COALESCE(c.frequency::text,'')) IN ('annual','yearly') THEN (EXTRACT(MONTH FROM sm.m)::int IN (10,11,12))
+              WHEN lower(COALESCE(c.frequency::text,'')) IN ('annual') THEN (EXTRACT(MONTH FROM sm.m)::int IN (10,11,12))
               ELSE true
             END
           ) THEN 'not_applicable'
@@ -270,15 +271,17 @@ export async function fetchControlsPage(
       CROSS JOIN current_month cm
       WHERE c.tenant_id = ${ctx.tenantId}
     ),
+
     control_worst AS (
       SELECT
         c.id AS control_id,
 
-        -- se o mês não é aplicável (pela frequência), control = not_applicable
+        -- ✅ mês aplicável para o controle (mesma regra acima)
         CASE
+          WHEN lower(COALESCE(c.frequency::text,'')) IN ('daily','weekly','monthly','on_demand') THEN true
           WHEN lower(COALESCE(c.frequency::text,'')) IN ('quarterly') THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,4,7,11))
           WHEN lower(COALESCE(c.frequency::text,'')) IN ('semiannual') THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,7))
-          WHEN lower(COALESCE(c.frequency::text,'')) IN ('annual','yearly') THEN (EXTRACT(MONTH FROM sm.m)::int IN (10,11,12))
+          WHEN lower(COALESCE(c.frequency::text,'')) IN ('annual') THEN (EXTRACT(MONTH FROM sm.m)::int IN (10,11,12))
           ELSE true
         END AS month_applicable,
 
@@ -298,6 +301,7 @@ export async function fetchControlsPage(
       WHERE c.tenant_id = ${ctx.tenantId}
       GROUP BY c.id, month_applicable
     ),
+
     control_counts AS (
       SELECT
         c.id AS control_id,
@@ -311,6 +315,7 @@ export async function fetchControlsPage(
       WHERE c.tenant_id = ${ctx.tenantId}
       GROUP BY c.id
     )
+
     SELECT
       c.id,
       c.control_code,
@@ -386,8 +391,6 @@ export async function fetchControlsPage(
 
 // =====================================================
 // ✅ IMPORTAÇÃO COMPLETA (controles + riscos + KPIs)
-// Export necessário para: ImportControlsClient.tsx
-// import { importarControlesCompleto } from "../actions"
 // =====================================================
 
 type ImportRow = {
@@ -421,8 +424,8 @@ type ImportRow = {
   kpi_type?: string // percent | number | boolean
   kpi_target_operator?: string // gte | lte | eq (ou >= <= =)
   kpi_target_value?: string | number
-  kpi_target_boolean?: string // true/false/sim/nao/1/0 (não existe no DB -> vira 1/0 em target_value)
-  kpi_warning_buffer_pct?: string | number // ex: 5 (percentual)
+  kpi_target_boolean?: string // true/false/sim/nao/1/0
+  kpi_warning_buffer_pct?: string | number // ex: 5
 }
 
 function _norm(v: any) {
@@ -458,45 +461,34 @@ function normalizeKpiType(v: any): "percent" | "number" | "boolean" | null {
   return null
 }
 
-function normalizeRiskClassification(
-  v: any
-): "low" | "medium" | "high" | "critical" | null {
+function normalizeRiskClassification(v: any): "low" | "medium" | "high" | "critical" | null {
   const s0 = _norm(v)
   if (!s0) return null
 
   const s = s0.toLowerCase()
 
-  // pt-br
   if (["crítico", "critico", "crítica", "critica", "crit"].includes(s)) return "critical"
   if (["alto", "alta"].includes(s)) return "high"
-  if (["médio", "medio", "moderado", "moderada", "med"].includes(s)) return "medium"
-  if (["baixo", "baixa"].includes(s)) return "low"
+  if (["médio", "medio", "moderado", "moderada", "med", "medium"].includes(s)) return "medium"
+  if (["baixo", "baixa", "low"].includes(s)) return "low"
 
-  // en (caso já venha certo)
   if (["critical", "high", "medium", "low"].includes(s)) return s as any
 
-  // numérico (bem comum em planilhas)
-  // 4=critical, 3=high, 2=medium, 1=low
-  if (["4"].includes(s)) return "critical"
-  if (["3"].includes(s)) return "high"
-  if (["2"].includes(s)) return "medium"
-  if (["1"].includes(s)) return "low"
+  if (s === "4") return "critical"
+  if (s === "3") return "high"
+  if (s === "2") return "medium"
+  if (s === "1") return "low"
 
-  // desconhecido -> erro (para não gravar lixo no banco)
   throw new Error(`risk_classification inválido: "${s0}"`)
 }
 
 function normalizeControlStatus(v: any): "active" | "archived" | null {
   const s0 = _norm(v)
   if (!s0) return null
-
   const s = s0.toLowerCase()
 
-  // pt-br
   if (["ativo", "ativa", "act"].includes(s)) return "active"
   if (["arquivado", "arquivada", "archived"].includes(s)) return "archived"
-
-  // en
   if (["active", "archived"].includes(s)) return s as any
 
   throw new Error(`control_status inválido: "${s0}"`)
@@ -504,23 +496,37 @@ function normalizeControlStatus(v: any): "active" | "archived" | null {
 
 function normalizeControlFrequency(
   v: any
-): "monthly" | "quarterly" | "semiannual" | "annual" | null {
+): "daily" | "weekly" | "monthly" | "quarterly" | "semiannual" | "annual" | "on_demand" | null {
   const s0 = _norm(v)
   if (!s0) return null
-  const s = s0.toLowerCase()
+  const s = s0.toLowerCase().trim()
 
-  // pt-br
+  // pt-br (labels do seu select)
+  if (["diária", "diaria", "dia", "daily"].includes(s)) return "daily"
+  if (["semanal", "semana", "weekly"].includes(s)) return "weekly"
   if (["mensal", "mês", "mes", "monthly", "month"].includes(s)) return "monthly"
   if (["trimestral", "trimestre", "quarterly", "quarter"].includes(s)) return "quarterly"
-  if (["semestral", "semiannual", "half-year", "halfyear"].includes(s)) return "semiannual"
-  if (["anual", "annual", "yearly"].includes(s)) return "annual"
 
-  // numérico (bem comum em planilha)
-  // 12=monthly, 4=quarterly, 2=semiannual, 1=annual
-  if (["12"].includes(s)) return "monthly"
-  if (["4"].includes(s)) return "quarterly"
-  if (["2"].includes(s)) return "semiannual"
-  if (["1"].includes(s)) return "annual"
+  // semestral + aliases
+  if (
+    ["semestral", "semestre", "semiannual", "half-year", "halfyear", "biannual", "bianual", "semi-annual"].includes(s)
+  )
+    return "semiannual"
+
+  if (["anual", "ano", "annual", "yearly"].includes(s)) return "annual"
+
+  // sob demanda
+  if (["sob demanda", "sob-demanda", "sob_demanda", "ondemand", "on demand", "on_demand", "ad hoc", "adhoc"].includes(s))
+    return "on_demand"
+
+  // numérico
+  if (s === "365") return "daily"
+  if (s === "52") return "weekly"
+  if (s === "12") return "monthly"
+  if (s === "4") return "quarterly"
+  if (s === "2") return "semiannual"
+  if (s === "1") return "annual"
+  if (s === "0") return "on_demand"
 
   throw new Error(`control_frequency inválido: "${s0}"`)
 }
@@ -534,7 +540,6 @@ function normalizeOperator(v: any): "gte" | "lte" | "eq" | null {
   return null
 }
 
-// CSV manda 5 => 5% (salvamos 0.05)
 function parseWarningPctToDb(v: any) {
   const n = parseNumberOrNull(v)
   if (n === null) return null
@@ -552,8 +557,6 @@ export async function importarControlesCompleto(rows: ImportRow[]) {
   let kpis_updated = 0
 
   const errors: any[] = []
-
-  // ✅ Pré-validação
   const validRows: { line: number; r: ImportRow }[] = []
 
   for (let i = 0; i < rows.length; i++) {
@@ -570,9 +573,7 @@ export async function importarControlesCompleto(rows: ImportRow[]) {
       }
 
       if (emptyToNull(r.control_status)) normalizeControlStatus(r.control_status)
-
       if (emptyToNull(r.control_frequency)) normalizeControlFrequency(r.control_frequency)
-
       if (emptyToNull(r.risk_classification)) normalizeRiskClassification(r.risk_classification)
 
       if (emptyToNull(r.kpi_type)) {
@@ -597,13 +598,7 @@ export async function importarControlesCompleto(rows: ImportRow[]) {
   }
 
   if (errors.length) {
-    return {
-      controls_imported,
-      controls_updated,
-      kpis_imported,
-      kpis_updated,
-      errors,
-    }
+    return { controls_imported, controls_updated, kpis_imported, kpis_updated, errors }
   }
 
   for (const item of validRows) {
@@ -615,7 +610,6 @@ export async function importarControlesCompleto(rows: ImportRow[]) {
       const control_code = _norm(r.control_code)
       const control_name = _norm(r.control_name)
 
-      // 1) Framework
       const fwRes = await sql<{ id: string }>`
         INSERT INTO frameworks (tenant_id, name, created_at)
         VALUES (${ctx.tenantId}, ${frameworkName}, now())
@@ -626,7 +620,6 @@ export async function importarControlesCompleto(rows: ImportRow[]) {
       const framework_id = fwRes.rows?.[0]?.id
       if (!framework_id) throw new Error("Falha ao resolver framework_id.")
 
-      // 2) Risk (opcional)
       let risk_id: string | null = null
       const risk_code = emptyToNull(r.risk_code)
       if (risk_code) {
@@ -653,7 +646,6 @@ export async function importarControlesCompleto(rows: ImportRow[]) {
         risk_id = riskRes.rows?.[0]?.id ?? null
       }
 
-      // 3) Control (upsert)
       const ctlExists = await sql<{ id: string }>`
         SELECT id::text AS id
         FROM controls
@@ -723,7 +715,6 @@ export async function importarControlesCompleto(rows: ImportRow[]) {
       if (existingControlId) controls_updated++
       else controls_imported++
 
-      // 4) KPI (opcional)
       const kpi_code = emptyToNull(r.kpi_code)
       if (kpi_code) {
         const kpi_name = emptyToNull(r.kpi_name)
@@ -741,23 +732,17 @@ export async function importarControlesCompleto(rows: ImportRow[]) {
         const kpi_type = normalizeKpiType(r.kpi_type) ?? null
         const target_operator = normalizeOperator(r.kpi_target_operator) ?? null
 
-        // compat: se não vier target_value novo, usa kpi_target antigo
         const target_value_raw = (r.kpi_target_value ?? r.kpi_target) as any
         const target_value_num = parseNumberOrNull(target_value_raw)
 
         const target_boolean = parseBoolOrNull(r.kpi_target_boolean)
         const warning_buffer_pct = parseWarningPctToDb(r.kpi_warning_buffer_pct)
 
-        // ✅ DB NÃO tem target_boolean -> salvamos boolean como 1/0 em target_value
         let target_value_db: number | null = target_value_num
         if (kpi_type === "boolean") {
-          if (typeof target_boolean === "boolean") {
-            target_value_db = target_boolean ? 1 : 0
-          } else if (target_value_num === 0 || target_value_num === 1) {
-            target_value_db = target_value_num
-          } else {
-            target_value_db = null
-          }
+          if (typeof target_boolean === "boolean") target_value_db = target_boolean ? 1 : 0
+          else if (target_value_num === 0 || target_value_num === 1) target_value_db = target_value_num
+          else target_value_db = null
         }
 
         const upKpi = await sql<{ id: string }>`
@@ -767,12 +752,10 @@ export async function importarControlesCompleto(rows: ImportRow[]) {
             kpi_code,
             kpi_name,
             kpi_description,
-
             kpi_type,
             target_operator,
             target_value,
             warning_buffer_pct,
-
             created_at,
             updated_at
           )
@@ -782,12 +765,10 @@ export async function importarControlesCompleto(rows: ImportRow[]) {
             ${kpi_code},
             ${kpi_name},
             ${emptyToNull(r.kpi_description)},
-
             ${kpi_type},
             ${target_operator},
             ${target_value_db},
             ${warning_buffer_pct ?? 0.05},
-
             now(),
             now()
           )
@@ -796,12 +777,10 @@ export async function importarControlesCompleto(rows: ImportRow[]) {
             control_id = EXCLUDED.control_id,
             kpi_name = EXCLUDED.kpi_name,
             kpi_description = COALESCE(EXCLUDED.kpi_description, kpis.kpi_description),
-
             kpi_type = COALESCE(EXCLUDED.kpi_type, kpis.kpi_type),
             target_operator = COALESCE(EXCLUDED.target_operator, kpis.target_operator),
             target_value = COALESCE(EXCLUDED.target_value, kpis.target_value),
             warning_buffer_pct = COALESCE(EXCLUDED.warning_buffer_pct, kpis.warning_buffer_pct),
-
             updated_at = now()
           RETURNING id::text AS id
         `
@@ -821,11 +800,5 @@ export async function importarControlesCompleto(rows: ImportRow[]) {
     }
   }
 
-  return {
-    controls_imported,
-    controls_updated,
-    kpis_imported,
-    kpis_updated,
-    errors,
-  }
+  return { controls_imported, controls_updated, kpis_imported, kpis_updated, errors }
 }

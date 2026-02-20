@@ -8,9 +8,39 @@ const DEFAULT_PRIORITY = "medium" as const
 
 // Cria (se necessário) um action plan para o risco quando classification = high/critical
 // Regra A: nunca fecha automaticamente se o risco baixar depois.
-export async function ensureActionPlanForRisk(riskId: string, opts?: { dueInDays?: number }) {
+export async function ensureActionPlanForRisk(
+  riskId: string,
+  opts?: { dueInDays?: number; responsibleName?: string | null }
+) {
   const ctx = await getContext()
   const dueDays = opts?.dueInDays ?? 14
+  const responsibleName = opts?.responsibleName?.trim() || null
+  let ownerUserId: string | null = null
+
+  if (responsibleName) {
+    const byEmail = await sql<{ id: string }>`
+      SELECT id::text AS id
+      FROM users
+      WHERE tenant_id = ${ctx.tenantId}
+        AND lower(email::text) = lower(${responsibleName})
+      LIMIT 1
+    `
+    if (byEmail.rows?.[0]?.id) {
+      ownerUserId = byEmail.rows[0].id
+    } else {
+      const byName = await sql<{ id: string }>`
+        SELECT id::text AS id
+        FROM users
+        WHERE tenant_id = ${ctx.tenantId}
+          AND lower(name::text) = lower(${responsibleName})
+        ORDER BY created_at DESC
+        LIMIT 2
+      `
+      if (byName.rows.length === 1) {
+        ownerUserId = byName.rows[0].id
+      }
+    }
+  }
 
   // 1) Carrega contexto do risco
   const { rows } = await sql<{
@@ -80,6 +110,7 @@ export async function ensureActionPlanForRisk(riskId: string, opts?: { dueInDays
       risk_id,
       title,
       description,
+      responsible_name,
       owner_user_id,
       due_date,
       priority,
@@ -92,7 +123,8 @@ export async function ensureActionPlanForRisk(riskId: string, opts?: { dueInDays
       ${riskId},
       ${title},
       ${description},
-      ${null},
+      ${responsibleName},
+      ${ownerUserId ? ownerUserId : null}::uuid,
       (CURRENT_DATE + (${dueDays} * INTERVAL '1 day'))::date,
       ${priority}::action_priority,
       'not_started'::action_status,

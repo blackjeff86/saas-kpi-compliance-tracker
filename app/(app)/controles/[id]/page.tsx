@@ -3,7 +3,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import PageContainer from "../../PageContainer"
 import PageHeader from "../../PageHeader"
-import { fetchControlById } from "./actions"
+import { fetchControlById, fetchActionPlansForControlByMonth } from "./actions"
 import type { ControlKpiSummaryRow } from "./actions"
 import { fetchControlHistory } from "./history-actions"
 import type { ControlHistoryItem } from "./history-actions"
@@ -27,6 +27,13 @@ type ActionPlanRow = {
   priority: string | null
   due_date: string | null
   updated_at: string | null
+
+  kpi_id: string | null
+  kpi_code: string | null
+  kpi_name: string | null
+
+  execution_id: string | null
+  execution_period_start: string | null
 }
 
 function riskBadge(v?: string | null) {
@@ -198,7 +205,15 @@ export default async function ControleDetailPage({
     history = []
   }
 
-  const actionPlans: ActionPlanRow[] = []
+  // ✅ action plans (somente quando tab=plans)
+  let actionPlans: ActionPlanRow[] = []
+  if (tab === "plans") {
+    try {
+      actionPlans = (await fetchActionPlansForControlByMonth(control.id, mes_ref_used)) as any
+    } catch {
+      actionPlans = []
+    }
+  }
 
   const tabHref = (next: string) =>
     `/controles/${control.id}?tab=${next}&mes_ref=${encodeURIComponent(mes_ref_used)}`
@@ -437,16 +452,97 @@ export default async function ControleDetailPage({
                 </div>
               ) : tab === "plans" ? (
                 <div className="p-0">
-                  <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-                    <CircleAlert className="w-4 h-4 text-slate-400" />
-                    <h3 className="text-sm font-semibold text-slate-800">Planos de Ação</h3>
+                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <CircleAlert className="w-4 h-4 text-slate-400" />
+                      <h3 className="text-sm font-semibold text-slate-800">Planos de Ação</h3>
+                    </div>
+
+                    <div className="text-xs text-slate-400">
+                      Período: <span className="font-semibold text-slate-600">{formatMonthLabel(mes_ref_used)}</span>
+                    </div>
                   </div>
 
                   {actionPlans.length === 0 ? (
                     <div className="px-4 py-8 text-sm text-slate-500">
-                      Nenhum plano de ação encontrado para este controle.
+                      Nenhum plano de ação encontrado para este controle neste período.
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-100">
+                            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                              KPI
+                            </th>
+                            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                              Plano
+                            </th>
+                            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                              Prioridade
+                            </th>
+                            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                              Status
+                            </th>
+                            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                              Due date
+                            </th>
+                            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                              Atualizado
+                            </th>
+                          </tr>
+                        </thead>
+
+                        <tbody className="divide-y divide-slate-100">
+                          {actionPlans.map((ap) => (
+                            <tr key={ap.id} className="hover:bg-slate-50">
+                              <td className="px-4 py-3">
+                                {ap.kpi_id ? (
+                                  <Link
+                                    href={`/kpis/${ap.kpi_id}?mes_ref=${encodeURIComponent(mes_ref_used)}`}
+                                    className="inline-flex flex-col hover:underline"
+                                    title="Abrir detalhe do KPI"
+                                  >
+                                    <span className="text-sm font-medium text-slate-700">{ap.kpi_name ?? "KPI"}</span>
+                                    <span className="text-xs text-slate-500 mt-0.5">{ap.kpi_code ?? ""}</span>
+                                  </Link>
+                                ) : (
+                                  <span className="text-sm text-slate-500">—</span>
+                                )}
+
+                                {ap.execution_id && ap.execution_period_start === mes_ref_used ? (
+                                  <div className="mt-1 text-[11px] font-semibold text-emerald-700">Vinculado ao período</div>
+                                ) : ap.execution_id ? (
+                                  <div className="mt-1 text-[11px] font-semibold text-amber-700">
+                                    Vínculo em outro período ({ap.execution_period_start ?? "—"})
+                                  </div>
+                                ) : (
+                                  <div className="mt-1 text-[11px] font-semibold text-slate-400">Sem vínculo à execução</div>
+                                )}
+                              </td>
+
+                              <td className="px-4 py-3">
+                                <span className="text-sm font-medium text-slate-800">{ap.title}</span>
+                                <div className="text-xs text-slate-400 mt-0.5 font-mono">{ap.id}</div>
+                              </td>
+
+                              <td className="px-4 py-3 text-sm text-slate-700">{ap.priority ?? "—"}</td>
+
+                              <td className="px-4 py-3 text-sm text-slate-700">{ap.status ?? "—"}</td>
+
+                              <td className="px-4 py-3 text-sm text-slate-700">
+                                {ap.due_date ? new Date(ap.due_date).toLocaleDateString("pt-BR") : "—"}
+                              </td>
+
+                              <td className="px-4 py-3 text-sm text-slate-500">
+                                {ap.updated_at ? new Date(ap.updated_at).toLocaleString("pt-BR") : "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="p-4">
