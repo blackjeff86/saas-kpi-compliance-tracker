@@ -1,96 +1,175 @@
 // app/(app)/kpis/page.tsx
+import Link from "next/link"
 import PageContainer from "../PageContainer"
 import PageHeader from "../PageHeader"
-import { fetchKpis } from "./actions"
+import { fetchKpis, fetchKpisFilterOptions, fetchControlsForKpiSelect } from "./actions"
+import FiltersBar from "./FiltersBar"
+import KpisTable from "./KpisTable"
+import NewKpiModal from "./NewKpiModal"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 
-function pill(v?: string | null) {
-  const s = (v || "").toLowerCase()
-  if (s.includes("bool") || s.includes("yes") || s.includes("sim"))
-    return "bg-indigo-50 text-indigo-700 border-indigo-200"
-  if (s.includes("percent") || s.includes("%"))
-    return "bg-blue-50 text-blue-700 border-blue-200"
-  if (s.includes("number") || s.includes("numeric"))
-    return "bg-slate-50 text-slate-700 border-slate-200"
-  return "bg-slate-50 text-slate-700 border-slate-200"
+type SearchParams = Record<string, string | string[] | undefined>
+
+function pickFirst(v: string | string[] | undefined) {
+  if (Array.isArray(v)) return v[0]
+  return v
 }
 
-export default async function KpisPage() {
-  const rows = await fetchKpis()
+function clampInt(v: any, def: number, min: number, max: number) {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return def
+  return Math.max(min, Math.min(max, Math.floor(n)))
+}
+
+function buildHref(params: Record<string, string>, page: number) {
+  const s = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => {
+    if (v) s.set(k, v)
+  })
+  s.set("page", String(page))
+  return `/kpis?${s.toString()}`
+}
+
+// ✅ mês atual em YYYY-MM (America/Sao_Paulo) — mesmo padrão de Controles
+function currentYYYYMM() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(new Date())
+  const y = parts.find((p) => p.type === "year")?.value ?? ""
+  const m = parts.find((p) => p.type === "month")?.value ?? ""
+  return `${y}-${m}`
+}
+
+export default async function KpisPage(props: { searchParams?: Promise<SearchParams> }) {
+  const sp = props.searchParams ? await props.searchParams : {}
+
+  const q = (pickFirst(sp.q) || "").trim()
+  const page = clampInt(pickFirst(sp.page), 1, 1, 99999)
+  const mes_ref = (pickFirst(sp.mes_ref) || "").trim() || currentYYYYMM()
+  const framework = (pickFirst(sp.framework) || "").trim()
+  const frequency = (pickFirst(sp.frequency) || "").trim()
+  const owner = (pickFirst(sp.owner) || "").trim()
+  const focal = (pickFirst(sp.focal) || "").trim()
+  const resultado = (pickFirst(sp.resultado) || "").trim()
+
+  const pageSize = 10
+  const offset = (page - 1) * pageSize
+
+  const [opts, { rows, total }, controls] = await Promise.all([
+    fetchKpisFilterOptions(),
+    fetchKpis({
+      mes_ref,
+      q,
+      framework,
+      frequency,
+      owner,
+      focal,
+      resultado,
+      limit: pageSize,
+      offset,
+    }),
+    fetchControlsForKpiSelect(),
+  ])
+
+  const from = total === 0 ? 0 : offset + 1
+  const to = Math.min(offset + rows.length, total)
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  const baseParams: Record<string, string> = {
+    q,
+    mes_ref,
+    framework,
+    frequency,
+    owner,
+    focal,
+    resultado,
+  }
+  const mkHref = (nextPage: number) => buildHref(baseParams, nextPage)
 
   return (
     <PageContainer variant="default">
       <div className="space-y-4">
+        {/* ✅ Cabeçalho (sem duplicar título/subtítulo) + botão na cor bg-primary */}
         <PageHeader
-          title="KPIs"
-          description="Catálogo de KPIs por tenant."
-          right={<div className="text-sm text-slate-500">{rows.length} registro(s)</div>}
+          title="Gestão de KPIs"
+          description="Monitore e gerencie os indicadores de conformidade da sua organização."
+          right={
+            <div className="flex items-center gap-3">
+              <NewKpiModal controls={controls} />
+            </div>
+          }
         />
 
-        <div className="rounded-xl border bg-white overflow-hidden">
-          <div className="grid grid-cols-12 gap-1 px-4 py-3 text-[11px] font-semibold text-slate-500 border-b bg-slate-50 uppercase tracking-wide">
-            <div className="col-span-2 normal-case">Código</div>
-            <div className="col-span-5 normal-case">Nome</div>
-            <div className="col-span-2 normal-case">Tipo</div>
-            <div className="col-span-2 normal-case">Meta</div>
-            <div className="col-span-1 text-right normal-case">Evidência</div>
-          </div>
+        {/* ✅ FiltersBar (client) agora real, não mock */}
+        <FiltersBar
+          total={total}
+          opts={{
+            months: opts.months,
+            frameworks: opts.frameworks,
+            frequencies: opts.frequencies,
+            owners: opts.owners,
+            focals: opts.focals,
+          }}
+        />
 
+        {/* Table card */}
+        <div className="bg-white dark:bg-background-dark border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
           {rows.length === 0 ? (
-            <div className="p-6 text-sm text-slate-500">Nenhum KPI encontrado.</div>
+            <div className="px-4 py-10">
+              <div className="text-sm text-slate-600 dark:text-slate-300 font-medium">
+                Nenhum KPI encontrado com os filtros atuais.
+              </div>
+              <div className="text-xs text-slate-400 mt-2">
+                Dica: selecione o <b>Mês ref</b> para ver o resultado mensal do KPI.
+              </div>
+            </div>
           ) : (
-            rows.map((r) => {
-              const isActive = Boolean((r as any).is_active) // ✅ se não vier, fica false (ideal é vir do backend)
-              const targetValue = (r as any).target_value
-
-              const metaText =
-                !isActive || targetValue === null || targetValue === undefined ? "—" : String(targetValue)
-
-              return (
-                <div
-                  key={(r as any).id}
-                  className="grid grid-cols-12 gap-1 px-4 py-3 text-sm border-b last:border-b-0 items-center"
-                >
-                  <div className="col-span-2">
-                    <div className="font-medium">{(r as any).kpi_code}</div>
-                    <div className="text-xs text-slate-500">{(r as any).created_at}</div>
-                  </div>
-
-                  <div className="col-span-5 min-w-0">
-                    <div className="font-medium truncate">{(r as any).kpi_name}</div>
-                    <div className="text-xs text-slate-500 line-clamp-1">
-                      operator: {(r as any).target_operator ?? "—"} • value: {(r as any).target_value ?? "—"}
-                      {!isActive ? " • inativo" : ""}
-                    </div>
-                  </div>
-
-                  <div className="col-span-2">
-                    <span className={`inline-flex px-2 py-1 rounded-md border text-xs ${pill((r as any).kpi_type)}`}>
-                      {(r as any).kpi_type ?? "—"}
-                    </span>
-                  </div>
-
-                  {/* ✅ Meta: SOMENTE target_value (e ignora se is_active=false) */}
-                  <div className="col-span-2 text-slate-700">
-                    <span className="font-medium">{metaText}</span>
-                  </div>
-
-                  <div className="col-span-1 flex justify-end">
-                    <span
-                      className={[
-                        "inline-flex px-2 py-1 rounded-md border text-xs",
-                        (r as any).evidence_required
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : "bg-slate-50 text-slate-700 border-slate-200",
-                      ].join(" ")}
-                      title={(r as any).evidence_required ? "Obrigatória" : "Opcional"}
-                    >
-                      {(r as any).evidence_required ? "sim" : "não"}
-                    </span>
-                  </div>
-                </div>
-              )
-            })
+            <KpisTable
+              rows={rows as any}
+              mes_ref={mes_ref}
+              returnTo={`/kpis?${new URLSearchParams(baseParams).toString()}`}
+            />
           )}
+
+          <div className="px-4 py-3 bg-white dark:bg-background-dark border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="text-sm text-slate-500">
+              Mostrando{" "}
+              <span className="font-semibold text-slate-900 dark:text-white">{from}</span> a{" "}
+              <span className="font-semibold text-slate-900 dark:text-white">{to}</span> de{" "}
+              <span className="font-semibold text-slate-900 dark:text-white">{total}</span> resultados
+            </div>
+
+            <div className="flex items-center gap-2 justify-end">
+              <Link
+                aria-disabled={page <= 1}
+                href={mkHref(Math.max(1, page - 1))}
+                className={`p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-primary hover:border-primary ${
+                  page <= 1 ? "pointer-events-none opacity-50" : ""
+                }`}
+                title="Anterior"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Link>
+
+              <div className="text-sm text-slate-500">
+                Página <span className="font-semibold text-slate-900 dark:text-white">{page}</span> /{" "}
+                <span className="font-semibold text-slate-900 dark:text-white">{totalPages}</span>
+              </div>
+
+              <Link
+                aria-disabled={page >= totalPages}
+                href={mkHref(Math.min(totalPages, page + 1))}
+                className={`p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-primary hover:border-primary ${
+                  page >= totalPages ? "pointer-events-none opacity-50" : ""
+                }`}
+                title="Próxima"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </PageContainer>

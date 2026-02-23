@@ -98,7 +98,10 @@ export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?
         <thead>
           <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
             <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Controle
+              Código
+            </th>
+            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              Nome
             </th>
             <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
               Framework
@@ -138,12 +141,17 @@ export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?
                 <div className="flex items-center gap-3">
                   <div className="mt-1 h-8 w-1 rounded-full bg-transparent group-hover:bg-primary/60 transition-colors" />
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                    <div className="text-sm font-semibold text-slate-900 dark:text-white">
                       <span className="font-mono text-slate-500 dark:text-slate-400">{r.control_code}</span>
-                      <span className="mx-2 text-slate-300 dark:text-slate-700">|</span>
-                      {r.name}
                     </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">{r.created_at ?? "—"}</div>
                   </div>
+                </div>
+              </td>
+
+              <td className="px-4 py-3 min-w-0">
+                <div className="text-sm font-semibold text-slate-900 dark:text-white truncate max-w-[200px]">
+                  {r.name}
                 </div>
               </td>
 

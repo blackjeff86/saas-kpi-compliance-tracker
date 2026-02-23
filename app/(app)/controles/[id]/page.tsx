@@ -410,7 +410,7 @@ export default async function ControleDetailPage({
                             <tr key={k.kpi_id} className="hover:bg-slate-50">
                               <td className="px-4 py-3">
                                 <Link
-                                  href={`/kpis/${k.kpi_id}?mes_ref=${encodeURIComponent(mes_ref_used)}`}
+                                  href={`/kpis/${k.kpi_id}?mes_ref=${encodeURIComponent(mes_ref_used)}&from=controle`}
                                   className="inline-flex flex-col hover:underline"
                                   title="Abrir detalhe do KPI"
                                 >
@@ -499,7 +499,7 @@ export default async function ControleDetailPage({
                               <td className="px-4 py-3">
                                 {ap.kpi_id ? (
                                   <Link
-                                    href={`/kpis/${ap.kpi_id}?mes_ref=${encodeURIComponent(mes_ref_used)}`}
+                                    href={`/kpis/${ap.kpi_id}?mes_ref=${encodeURIComponent(mes_ref_used)}&from=controle`}
                                     className="inline-flex flex-col hover:underline"
                                     title="Abrir detalhe do KPI"
                                   >

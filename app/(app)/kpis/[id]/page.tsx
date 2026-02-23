@@ -33,6 +33,8 @@ export default async function KpiDetailPage({
   const sp = (await searchParams) ?? {}
 
   const mes_ref = pickFirst(sp.mes_ref) ?? currentYYYYMM()
+  const from = (pickFirst(sp.from) ?? "").trim()
+  const returnTo = (pickFirst(sp.returnTo) ?? "").trim()
 
   let data: Awaited<ReturnType<typeof fetchKpiExecutionPage>> | null = null
   try {
@@ -44,6 +46,14 @@ export default async function KpiDetailPage({
   }
 
   const { kpi, execution, history, mes_ref_used } = data
+
+  const backHref =
+    from === "controle"
+      ? `/controles/${kpi.control_id}?mes_ref=${encodeURIComponent(mes_ref_used)}`
+      : returnTo && returnTo.startsWith("/")
+      ? returnTo
+      : `/kpis?mes_ref=${encodeURIComponent(mes_ref_used)}`
+  const backTitle = from === "controle" ? "Voltar para o controle" : "Voltar para KPIs"
 
   return (
     <PageContainer variant="default">
@@ -59,9 +69,9 @@ export default async function KpiDetailPage({
           }
           right={
             <Link
-              href={`/controles/${kpi.control_id}?mes_ref=${encodeURIComponent(mes_ref_used)}`}
+              href={backHref}
               className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border bg-white hover:bg-slate-50"
-              title="Voltar para o controle"
+              title={backTitle}
             >
               <ArrowLeft className="w-4 h-4" />
               Voltar
