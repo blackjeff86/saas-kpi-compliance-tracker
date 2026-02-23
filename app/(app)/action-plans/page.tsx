@@ -8,16 +8,9 @@ import {
   fetchActionPlansFilterOptions,
   type ActionPlanListRow,
 } from "./actions-list"
-import {
-  Plus,
-  CalendarDays,
-  Pencil,
-  MoreVertical,
-  ClipboardList,
-  Timer,
-  AlertTriangle,
-  BadgeCheck,
-} from "lucide-react"
+import { CalendarDays, ClipboardList, Timer, AlertTriangle, BadgeCheck } from "lucide-react"
+import NewActionPlanModal from "./NewActionPlanModal"
+import { fetchOriginOptions } from "./actions-create"
 
 function statusPill(s?: string | null) {
   const v = (s || "").toLowerCase()
@@ -73,15 +66,6 @@ function isOverdue(row: ActionPlanListRow) {
   return dd.getTime() < today.getTime()
 }
 
-function estimateProgressPercent(row: ActionPlanListRow) {
-  // Placeholder inteligente (até você ter progresso real no banco)
-  const s = (row.status || "").toLowerCase()
-  if (s === "done") return 100
-  if (s === "in_progress") return 60
-  if (s === "blocked") return 20
-  return 0
-}
-
 function initialsFromName(name: string) {
   const clean = name.trim()
   if (!clean) return "—"
@@ -121,18 +105,23 @@ function getQueryValue(
   return trimmed ? trimmed : undefined
 }
 
-export default async function ActionPlansPage(props: {
-  searchParams?: { [key: string]: string | string[] | undefined }
-}) {
-  const riskId = getQueryValue(props.searchParams, "risk")
-  const framework = getQueryValue(props.searchParams, "framework")
-  const responsible = getQueryValue(props.searchParams, "responsible")
-  const status = getQueryValue(props.searchParams, "status")
-  const priority = getQueryValue(props.searchParams, "priority")
+type PageSearchParams = { [key: string]: string | string[] | undefined }
 
-  const [rows, filterOptions] = await Promise.all([
+export default async function ActionPlansPage(props: {
+  searchParams?: PageSearchParams | Promise<PageSearchParams | undefined>
+}) {
+  const searchParams = await props.searchParams
+
+  const riskId = getQueryValue(searchParams, "risk")
+  const framework = getQueryValue(searchParams, "framework")
+  const responsible = getQueryValue(searchParams, "responsible")
+  const status = getQueryValue(searchParams, "status")
+  const priority = getQueryValue(searchParams, "priority")
+
+  const [rows, filterOptions, originOptions] = await Promise.all([
     fetchActionPlans({ riskId, framework, responsible, status, priority }),
     fetchActionPlansFilterOptions(),
+    fetchOriginOptions(),
   ])
 
   const total = rows.length
@@ -172,14 +161,7 @@ export default async function ActionPlansPage(props: {
           }
           right={
             <div className="flex items-center gap-3">
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/20 hover:opacity-95 transition-all"
-                title="Novo Plano (placeholder)"
-              >
-                <Plus className="h-4 w-4" />
-                Novo Plano
-              </button>
+              <NewActionPlanModal originOptions={originOptions} />
             </div>
           }
         />
@@ -228,10 +210,7 @@ export default async function ActionPlansPage(props: {
             </div>
             <p className="text-sm font-medium text-slate-500">Índice de Compliance</p>
             <p className="text-2xl font-bold text-slate-800">{complianceLabel}</p>
-            <p className="mt-1 text-[11px] text-slate-400">
-              {/* TODO: trocar por cálculo real quando existir score/compliance por plano */}
-              Baseado em % concluído (placeholder).
-            </p>
+            <p className="mt-1 text-[11px] text-slate-400">Baseado em % concluído (placeholder).</p>
           </div>
         </div>
 
@@ -256,9 +235,15 @@ export default async function ActionPlansPage(props: {
                   <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-400">
                     Responsável
                   </th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-400">Prazo</th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-400">Progresso</th>
-                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-400">Status</th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Prazo
+                  </th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Progresso
+                  </th>
+                  <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Status
+                  </th>
                   <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-slate-400">
                     Ações
                   </th>
@@ -274,12 +259,11 @@ export default async function ActionPlansPage(props: {
                   </tr>
                 ) : (
                   rows.map((r) => {
-                    const progress = estimateProgressPercent(r)
+                    const progress = Math.max(0, Math.min(100, r.progress_percent ?? 0))
                     const overdueRow = isOverdue(r)
                     const realDescription = sanitizeActionDescription(r.description)
                     const responsibleName = r.responsible_name?.trim() || "—"
 
-                    // Se não tiver description, usa resumo de origem como fallback
                     const fallbackDesc =
                       r.execution_id ? (
                         <>
@@ -293,12 +277,6 @@ export default async function ActionPlansPage(props: {
                       ) : (
                         <>origem: —</>
                       )
-
-                    const openHref = r.execution_id
-                      ? `/execucoes/${r.execution_id}`
-                      : r.risk_id
-                        ? `/risks/${r.risk_id}?from=action-plans&risk=${r.risk_id}`
-                        : null
 
                     return (
                       <tr key={r.id} className="transition-colors hover:bg-slate-50">
@@ -395,34 +373,6 @@ export default async function ActionPlansPage(props: {
                             >
                               Detalhes
                             </Link>
-
-                            {openHref ? (
-                              <Link
-                                href={openHref}
-                                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
-                                title="Abrir origem"
-                              >
-                                Abrir
-                              </Link>
-                            ) : (
-                              <span className="text-xs text-slate-400">—</span>
-                            )}
-
-                            <button
-                              type="button"
-                              className="rounded-md p-2 text-slate-400 hover:text-primary transition-colors"
-                              title="Editar (placeholder)"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-
-                            <button
-                              type="button"
-                              className="rounded-md p-2 text-slate-400 hover:text-slate-600 transition-colors"
-                              title="Mais (placeholder)"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </button>
                           </div>
                         </td>
                       </tr>

@@ -2,6 +2,7 @@
 "use server"
 
 import { sql } from "@vercel/postgres"
+import { revalidatePath } from "next/cache"
 import { getContext } from "../../lib/context"
 
 // =============================
@@ -537,4 +538,51 @@ export async function fetchActionPlansForControlByMonth(
   `
 
   return rows
+}
+
+// =============================
+// CREATE KPI (server action) - usado pelo KpiCreateClient.tsx
+// =============================
+
+export async function createKpiForControl(formData: FormData): Promise<void> {
+  const ctx = await getContext()
+
+  const controlId = norm(formData.get("controlId"))
+  const kpiCode = norm(formData.get("kpiCode"))
+  const kpiName = norm(formData.get("kpiName"))
+  const kpiDescription = norm(formData.get("kpiDescription"))
+
+  if (!controlId) throw new Error("controlId é obrigatório.")
+  if (!kpiCode) throw new Error("kpiCode é obrigatório.")
+  if (!kpiName) throw new Error("kpiName é obrigatório.")
+
+  // garante que o controle pertence ao tenant (evita criar KPI em controle de outro tenant)
+  const chk = await sql<{ id: string }>`
+    SELECT c.id::text AS id
+    FROM controls c
+    WHERE c.tenant_id = ${ctx.tenantId}
+      AND c.id = ${controlId}::uuid
+    LIMIT 1
+  `
+  if (!chk.rows[0]?.id) throw new Error("Controle não existe ou não pertence ao tenant.")
+
+  await sql`
+    INSERT INTO kpis (
+      tenant_id,
+      control_id,
+      kpi_code,
+      kpi_name,
+      description,
+      is_active
+    ) VALUES (
+      ${ctx.tenantId}::uuid,
+      ${controlId}::uuid,
+      ${kpiCode},
+      ${kpiName},
+      ${kpiDescription || null},
+      true
+    )
+  `
+
+  revalidatePath(`/controles/${controlId}`)
 }

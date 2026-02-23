@@ -10,6 +10,9 @@ export type ActionPlanListRow = {
   description: string | null
   responsible_name: string | null
   framework: string | null
+  task_total: number
+  task_done: number
+  progress_percent: number
   priority: string | null
   status: string | null
   due_date: string | null
@@ -41,8 +44,28 @@ function normalizeString(value?: string): string | null {
   return trimmed ? trimmed : null
 }
 
+async function ensureActionPlanTasksTable() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS action_plan_tasks (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id uuid NOT NULL,
+      action_plan_id uuid NOT NULL REFERENCES action_plans(id) ON DELETE CASCADE,
+      title text NOT NULL,
+      due_date date NULL,
+      priority text NULL,
+      responsible_name text NULL,
+      is_done boolean NOT NULL DEFAULT false,
+      done_at timestamptz NULL,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `
+}
+
 export async function fetchActionPlans(input?: FetchActionPlansInput): Promise<ActionPlanListRow[]> {
   const ctx = await getContext()
+  await ensureActionPlanTasksTable()
+
   const riskId = normalizeString(input?.riskId)
   const framework = normalizeString(input?.framework)
   const responsible = normalizeString(input?.responsible)
@@ -52,58 +75,99 @@ export async function fetchActionPlans(input?: FetchActionPlansInput): Promise<A
 
   const { rows } = await sql<ActionPlanListRow>`
     SELECT
-      ap.id,
-      ap.title,
-      ap.description,
-      ap.responsible_name,
+      ap.id::text AS id,
+      ap.title::text AS title,
+      ap.description::text AS description,
+      ap.responsible_name::text AS responsible_name,
+
       COALESCE(fc.name, fk.name)::text AS framework,
+
+      COALESCE(tc.task_total, 0)::int AS task_total,
+      COALESCE(tc.task_done, 0)::int AS task_done,
+
+      CASE
+        WHEN COALESCE(tc.task_total, 0) > 0
+          THEN ROUND((COALESCE(tc.task_done, 0)::numeric * 100.0) / COALESCE(tc.task_total, 0))::int
+        WHEN ap.status::text = 'done' THEN 100
+        ELSE 0
+      END::int AS progress_percent,
+
       ap.priority::text AS priority,
       ap.status::text AS status,
       ap.due_date::text AS due_date,
       ap.updated_at::text AS updated_at,
 
-      ap.execution_id,
-      c.control_code,
-      k.kpi_code,
+      ap.execution_id::text AS execution_id,
+      c.control_code::text AS control_code,
+      k.kpi_code::text AS kpi_code,
       e.auto_status::text AS auto_status,
       e.workflow_status::text AS workflow_status,
 
-      ap.risk_id,
-      r.title AS risk_title,
+      ap.risk_id::text AS risk_id,
+      r.title::text AS risk_title,
       r.classification::text AS risk_classification
 
     FROM action_plans ap
+
     LEFT JOIN kpi_executions e
       ON e.id = ap.execution_id
      AND e.tenant_id = ap.tenant_id
+
     LEFT JOIN controls c
       ON c.id = ap.control_id
      AND c.tenant_id = ap.tenant_id
+
     LEFT JOIN kpis k
       ON k.id = ap.kpi_id
      AND k.tenant_id = ap.tenant_id
+
     LEFT JOIN controls ck
       ON ck.id = k.control_id
      AND ck.tenant_id = ap.tenant_id
+
     LEFT JOIN frameworks fc
       ON fc.id = c.framework_id
+
     LEFT JOIN frameworks fk
       ON fk.id = ck.framework_id
 
-    LEFT JOIN risks r
+    -- ✅ alinhar com o resto do projeto (risk_catalog)
+    LEFT JOIN risk_catalog r
       ON r.id = ap.risk_id
      AND r.tenant_id = ap.tenant_id
 
-    WHERE ap.tenant_id = ${ctx.tenantId}
+    LEFT JOIN LATERAL (
+      SELECT
+        COUNT(*)::int AS task_total,
+        SUM(CASE WHEN t.is_done THEN 1 ELSE 0 END)::int AS task_done
+      FROM action_plan_tasks t
+      WHERE t.tenant_id = ap.tenant_id
+        AND t.action_plan_id = ap.id
+    ) tc ON true
+
+    WHERE ap.tenant_id = ${ctx.tenantId}::uuid
       AND (${riskId}::uuid IS NULL OR ap.risk_id = ${riskId}::uuid)
-      AND (${framework}::text IS NULL OR COALESCE(fc.name, fk.name)::text = ${framework}::text)
-      AND (${responsibleLike}::text IS NULL OR ap.responsible_name ILIKE ${responsibleLike}::text)
-      AND (${status}::text IS NULL OR ap.status::text = ${status}::text)
-      AND (${priority}::text IS NULL OR ap.priority::text = ${priority}::text)
+      AND (
+        ${framework}::text IS NULL
+        OR lower(btrim(COALESCE(fc.name, fk.name)::text)) = lower(btrim(${framework}::text))
+      )
+      AND (
+        ${responsibleLike}::text IS NULL
+        OR lower(COALESCE(ap.responsible_name, '')) LIKE lower(${responsibleLike}::text)
+      )
+      AND (
+        ${status}::text IS NULL
+        OR lower(btrim(COALESCE(ap.status::text, ''))) = lower(btrim(${status}::text))
+      )
+      AND (
+        ${priority}::text IS NULL
+        OR lower(btrim(COALESCE(ap.priority::text, ''))) = lower(btrim(${priority}::text))
+      )
 
     ORDER BY ap.updated_at DESC
     LIMIT 200
   `
+
   return rows
 }
 
@@ -134,7 +198,7 @@ export async function fetchActionPlansFilterOptions(): Promise<ActionPlansFilter
         ON fc.id = c.framework_id
       LEFT JOIN frameworks fk
         ON fk.id = ck.framework_id
-      WHERE ap.tenant_id = ${ctx.tenantId}
+      WHERE ap.tenant_id = ${ctx.tenantId}::uuid
         AND COALESCE(fc.name, fk.name) IS NOT NULL
         AND btrim(COALESCE(fc.name, fk.name)::text) <> ''
       ORDER BY value ASC
@@ -142,7 +206,7 @@ export async function fetchActionPlansFilterOptions(): Promise<ActionPlansFilter
     sql<{ value: string }>`
       SELECT DISTINCT ap.responsible_name AS value
       FROM action_plans ap
-      WHERE ap.tenant_id = ${ctx.tenantId}
+      WHERE ap.tenant_id = ${ctx.tenantId}::uuid
         AND ap.responsible_name IS NOT NULL
         AND btrim(ap.responsible_name) <> ''
       ORDER BY value ASC
@@ -150,7 +214,7 @@ export async function fetchActionPlansFilterOptions(): Promise<ActionPlansFilter
     sql<{ value: string }>`
       SELECT DISTINCT ap.status::text AS value
       FROM action_plans ap
-      WHERE ap.tenant_id = ${ctx.tenantId}
+      WHERE ap.tenant_id = ${ctx.tenantId}::uuid
         AND ap.status IS NOT NULL
         AND btrim(ap.status::text) <> ''
       ORDER BY value ASC
@@ -158,7 +222,7 @@ export async function fetchActionPlansFilterOptions(): Promise<ActionPlansFilter
     sql<{ value: string }>`
       SELECT DISTINCT ap.priority::text AS value
       FROM action_plans ap
-      WHERE ap.tenant_id = ${ctx.tenantId}
+      WHERE ap.tenant_id = ${ctx.tenantId}::uuid
         AND ap.priority IS NOT NULL
         AND btrim(ap.priority::text) <> ''
       ORDER BY value ASC
