@@ -2,10 +2,10 @@
 import Link from "next/link"
 import PageContainer from "../PageContainer"
 import PageHeader from "../PageHeader"
-import { fetchControlsPage, fetchControlsFilterOptions } from "./actions"
+import { fetchControlsPage, fetchControlsFilterOptions, fetchControlsSummary } from "./actions"
 import FiltersBar from "./FiltersBar"
 import ControlsTable from "./ControlsTable"
-import { UploadCloud, Plus, ChevronLeft, ChevronRight } from "lucide-react"
+import { UploadCloud, Plus, ChevronLeft, ChevronRight, ClipboardList, CheckCircle, AlertTriangle, XCircle } from "lucide-react"
 
 function clampInt(v: any, def: number, min: number, max: number) {
   const n = Number(v)
@@ -60,19 +60,29 @@ export default async function ControlesPage({
   const pageSize = 10
   const offset = (page - 1) * pageSize
 
-  const opts = await fetchControlsFilterOptions()
-
-  const { rows, total } = await fetchControlsPage({
-    q,
-    limit: pageSize,
-    offset,
-    mes_ref,
-    framework,
-    frequency,
-    risk,
-    owner,
-    focal,
-  })
+  const [opts, { rows, total }, summary] = await Promise.all([
+    fetchControlsFilterOptions(),
+    fetchControlsPage({
+      q,
+      limit: pageSize,
+      offset,
+      mes_ref,
+      framework,
+      frequency,
+      risk,
+      owner,
+      focal,
+    }),
+    fetchControlsSummary({
+      mes_ref,
+      q,
+      framework,
+      frequency,
+      risk,
+      owner,
+      focal,
+    }),
+  ])
 
   const from = total === 0 ? 0 : offset + 1
   const to = Math.min(offset + rows.length, total)
@@ -116,6 +126,53 @@ export default async function ControlesPage({
             </>
           }
         />
+
+        {/* Summary cards */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="rounded-lg bg-primary/10 p-2 text-primary">
+                <ClipboardList className="h-4 w-4" />
+              </span>
+              <span className="text-xs font-bold text-slate-400">{summary.total > 0 ? "Ativo" : "—"}</span>
+            </div>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Total de Controles</p>
+            <p className="text-2xl font-bold text-slate-800 dark:text-white">{summary.total}</p>
+          </div>
+
+          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="rounded-lg bg-emerald-100 dark:bg-emerald-900/30 p-2 text-emerald-700 dark:text-emerald-400">
+                <CheckCircle className="h-4 w-4" />
+              </span>
+              <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Em conformidade</span>
+            </div>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Em Conformidade</p>
+            <p className="text-2xl font-bold text-slate-800 dark:text-white">{summary.effective}</p>
+          </div>
+
+          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="rounded-lg bg-amber-100 dark:bg-amber-900/30 p-2 text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="h-4 w-4" />
+              </span>
+              <span className="text-xs font-bold text-amber-700 dark:text-amber-400">Atenção</span>
+            </div>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Atenção</p>
+            <p className="text-2xl font-bold text-slate-800 dark:text-white">{summary.warning}</p>
+          </div>
+
+          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="rounded-lg bg-red-100 dark:bg-red-900/30 p-2 text-red-700 dark:text-red-400">
+                <XCircle className="h-4 w-4" />
+              </span>
+              <span className="text-xs font-bold text-red-700 dark:text-red-400">Não conformidade</span>
+            </div>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Não Conformidade</p>
+            <p className="text-2xl font-bold text-slate-800 dark:text-white">{summary.critical}</p>
+          </div>
+        </div>
 
         <FiltersBar total={total} opts={opts} />
 

@@ -157,7 +157,8 @@ export async function fetchControlsPage(
   const owner = (input.owner ?? "").trim()
   const focal = (input.focal ?? "").trim()
 
-  const limit = Math.max(1, Math.min(100, input.limit ?? 10))
+  const noLimit = input.limit === 0
+  const limit = noLimit ? 99999 : Math.max(1, Math.min(100, input.limit ?? 10))
   const offset = Math.max(0, input.offset ?? 0)
 
   const totalRes = await sql<{ total: number }>`
@@ -387,6 +388,41 @@ export async function fetchControlsPage(
   `
 
   return { rows: pageRes.rows, total }
+}
+
+export type ControlsSummary = {
+  total: number
+  effective: number
+  warning: number
+  critical: number
+  pending: number
+  overdue: number
+  not_applicable: number
+}
+
+export async function fetchControlsSummary(
+  input: Omit<FetchControlsInput, "limit" | "offset"> = {}
+): Promise<ControlsSummary> {
+  const { rows } = await fetchControlsPage({
+    ...input,
+    limit: 0,
+    offset: 0,
+  })
+  const summary: ControlsSummary = {
+    total: rows.length,
+    effective: 0,
+    warning: 0,
+    critical: 0,
+    pending: 0,
+    overdue: 0,
+    not_applicable: 0,
+  }
+  for (const r of rows) {
+    const s = (r.control_result ?? "pending").toLowerCase()
+    if (s in summary) (summary as Record<string, number>)[s]++
+    else summary.pending++
+  }
+  return summary
 }
 
 // =====================================================

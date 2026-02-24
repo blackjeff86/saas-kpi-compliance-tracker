@@ -2,11 +2,11 @@
 import Link from "next/link"
 import PageContainer from "../PageContainer"
 import PageHeader from "../PageHeader"
-import { fetchKpis, fetchKpisFilterOptions, fetchControlsForKpiSelect } from "./actions"
+import { fetchKpis, fetchKpisFilterOptions, fetchControlsForKpiSelect, fetchKpisSummary } from "./actions"
 import FiltersBar from "./FiltersBar"
 import KpisTable from "./KpisTable"
 import NewKpiModal from "./NewKpiModal"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, ClipboardList, CheckCircle, AlertTriangle, XCircle } from "lucide-react"
 
 type SearchParams = Record<string, string | string[] | undefined>
 
@@ -57,7 +57,7 @@ export default async function KpisPage(props: { searchParams?: Promise<SearchPar
   const pageSize = 10
   const offset = (page - 1) * pageSize
 
-  const [opts, { rows, total }, controls] = await Promise.all([
+  const [opts, { rows, total }, controls, summary] = await Promise.all([
     fetchKpisFilterOptions(),
     fetchKpis({
       mes_ref,
@@ -71,6 +71,15 @@ export default async function KpisPage(props: { searchParams?: Promise<SearchPar
       offset,
     }),
     fetchControlsForKpiSelect(),
+    fetchKpisSummary({
+      mes_ref,
+      q,
+      framework,
+      frequency,
+      owner,
+      focal,
+      resultado,
+    }),
   ])
 
   const from = total === 0 ? 0 : offset + 1
@@ -101,6 +110,53 @@ export default async function KpisPage(props: { searchParams?: Promise<SearchPar
             </div>
           }
         />
+
+        {/* Summary cards */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="rounded-lg bg-primary/10 p-2 text-primary">
+                <ClipboardList className="h-4 w-4" />
+              </span>
+              <span className="text-xs font-bold text-slate-400">{summary.total > 0 ? "Ativo" : "—"}</span>
+            </div>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Total de KPIs</p>
+            <p className="text-2xl font-bold text-slate-800 dark:text-white">{summary.total}</p>
+          </div>
+
+          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="rounded-lg bg-emerald-100 dark:bg-emerald-900/30 p-2 text-emerald-700 dark:text-emerald-400">
+                <CheckCircle className="h-4 w-4" />
+              </span>
+              <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Em conformidade</span>
+            </div>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Em Conformidade</p>
+            <p className="text-2xl font-bold text-slate-800 dark:text-white">{summary.green}</p>
+          </div>
+
+          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="rounded-lg bg-amber-100 dark:bg-amber-900/30 p-2 text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="h-4 w-4" />
+              </span>
+              <span className="text-xs font-bold text-amber-700 dark:text-amber-400">Atenção</span>
+            </div>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Atenção</p>
+            <p className="text-2xl font-bold text-slate-800 dark:text-white">{summary.yellow}</p>
+          </div>
+
+          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="rounded-lg bg-red-100 dark:bg-red-900/30 p-2 text-red-700 dark:text-red-400">
+                <XCircle className="h-4 w-4" />
+              </span>
+              <span className="text-xs font-bold text-red-700 dark:text-red-400">Não conformidade</span>
+            </div>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Não Conformidade</p>
+            <p className="text-2xl font-bold text-slate-800 dark:text-white">{summary.red}</p>
+          </div>
+        </div>
 
         {/* ✅ FiltersBar (client) agora real, não mock */}
         <FiltersBar

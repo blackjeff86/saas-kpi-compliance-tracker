@@ -286,6 +286,126 @@ export async function fetchKpis(input: FetchKpisInput = {}): Promise<{ rows: Kpi
   return { rows: paginatedRows, total }
 }
 
+export type KpisSummary = {
+  total: number
+  green: number
+  yellow: number
+  red: number
+  pending: number
+  overdue: number
+  not_applicable: number
+}
+
+export async function fetchKpisSummary(
+  input: Omit<FetchKpisInput, "limit" | "offset"> = {}
+): Promise<KpisSummary> {
+  const ctx = await getContext()
+  const mes_ref = String(input?.mes_ref ?? "").trim()
+  const qRaw = (input?.q ?? "").trim()
+  const q = qRaw.length ? `%${qRaw}%` : null
+  const framework = String(input?.framework ?? "").trim()
+  const frequency = String(input?.frequency ?? "").trim()
+  const owner = String(input?.owner ?? "").trim()
+  const focal = String(input?.focal ?? "").trim()
+  const resultado = String(input?.resultado ?? "").trim()
+
+  const { rows } = await sql<{ month_status: string | null }>`
+    WITH selected_month AS (
+      SELECT
+        CASE
+          WHEN ${mes_ref} = '' THEN date_trunc('month', (now() AT TIME ZONE 'America/Sao_Paulo'))::date
+          ELSE to_date(${mes_ref} || '-01', 'YYYY-MM-DD')
+        END AS m
+    ),
+    current_month AS (
+      SELECT date_trunc('month', (now() AT TIME ZONE 'America/Sao_Paulo'))::date AS cm
+    ),
+    latest_exec_in_month AS (
+      SELECT DISTINCT ON (ke.kpi_id)
+        ke.kpi_id,
+        lower(ke.auto_status::text) AS auto_status
+      FROM kpi_executions ke
+      CROSS JOIN selected_month sm
+      WHERE ke.tenant_id = ${ctx.tenantId}
+        AND ke.period_start IS NOT NULL
+        AND date_trunc('month', ke.period_start)::date = sm.m
+      ORDER BY ke.kpi_id, ke.period_start DESC, ke.created_at DESC
+    )
+    SELECT (
+      CASE
+        WHEN (
+          CASE
+            WHEN lower(COALESCE(c.frequency::text,'')) IN ('daily','weekly','monthly','on_demand') THEN true
+            WHEN lower(COALESCE(c.frequency::text,'')) = 'quarterly' THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,4,7,11))
+            WHEN lower(COALESCE(c.frequency::text,'')) = 'semiannual' THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,7))
+            WHEN lower(COALESCE(c.frequency::text,'')) IN ('annual','yearly') THEN (EXTRACT(MONTH FROM sm.m)::int IN (10,11,12))
+            ELSE true
+          END
+        ) = false THEN 'not_applicable'
+        WHEN le.kpi_id IS NULL THEN
+          CASE WHEN sm.m < cm.cm THEN 'overdue' ELSE 'pending' END
+        ELSE
+          CASE COALESCE(le.auto_status,'')
+            WHEN 'in_target' THEN 'green'
+            WHEN 'warning' THEN 'yellow'
+            WHEN 'out_of_target' THEN 'red'
+            WHEN 'not_applicable' THEN 'not_applicable'
+            ELSE 'pending'
+          END
+      END
+    )::text AS month_status
+    FROM kpis k
+    JOIN controls c ON c.id = k.control_id AND c.tenant_id = ${ctx.tenantId}
+    LEFT JOIN frameworks f ON f.id = c.framework_id
+    LEFT JOIN latest_exec_in_month le ON le.kpi_id = k.id
+    CROSS JOIN selected_month sm
+    CROSS JOIN current_month cm
+    WHERE k.tenant_id = ${ctx.tenantId}
+      AND (
+        ${q}::text IS NULL
+        OR k.kpi_code::text ILIKE ${q}
+        OR k.kpi_name::text ILIKE ${q}
+        OR COALESCE(f.name, '') ILIKE ${q}
+        OR COALESCE(c.control_owner_name, '') ILIKE ${q}
+        OR COALESCE(c.control_owner_email, '') ILIKE ${q}
+        OR COALESCE(c.focal_point_name, '') ILIKE ${q}
+        OR COALESCE(c.focal_point_email, '') ILIKE ${q}
+      )
+      AND (${framework} = '' OR COALESCE(f.name, '') = ${framework})
+      AND (${frequency} = '' OR COALESCE(c.frequency::text, '') = ${frequency})
+      AND (
+        ${owner} = ''
+        OR lower(COALESCE(c.control_owner_email::text, '')) = lower(${owner})
+        OR lower(COALESCE(c.control_owner_name::text, '')) = lower(${owner})
+      )
+      AND (
+        ${focal} = ''
+        OR lower(COALESCE(c.focal_point_email::text, '')) = lower(${focal})
+        OR lower(COALESCE(c.focal_point_name::text, '')) = lower(${focal})
+      )
+  `
+  let list = rows
+  if (resultado) {
+    const r = resultado.toLowerCase()
+    list = list.filter((x) => (x.month_status ?? "").toLowerCase() === r)
+  }
+  const summary: KpisSummary = {
+    total: list.length,
+    green: 0,
+    yellow: 0,
+    red: 0,
+    pending: 0,
+    overdue: 0,
+    not_applicable: 0,
+  }
+  for (const r of list) {
+    const s = (r.month_status ?? "pending").toLowerCase()
+    if (s in summary) (summary as Record<string, number>)[s]++
+    else summary.pending++
+  }
+  return summary
+}
+
 // =============================
 // Novo KPI (modal) — controles para select
 // =============================
