@@ -94,11 +94,15 @@ export default async function RiskDetailPage(props: {
                   {risk.classification}
                 </span>
                 <span className="text-slate-400">•</span>
-                <span>Status: {risk.status}</span>
-                <span className="text-slate-400">•</span>
-                <span>Domínio: {risk.domain}</span>
-                <span className="text-slate-400">•</span>
-                <span>Owner: {risk.owner_name ?? "—"}</span>
+                <span>Código: {risk.risk_code ?? risk.domain}</span>
+                {risk.source === "full" ? (
+                  <>
+                    <span className="text-slate-400">•</span>
+                    <span>Status: {risk.status}</span>
+                    <span className="text-slate-400">•</span>
+                    <span>Owner: {risk.owner_name ?? "—"}</span>
+                  </>
+                ) : null}
               </div>
 
               {risk.description ? (
@@ -114,6 +118,8 @@ export default async function RiskDetailPage(props: {
           }
         />
 
+        {risk.source === "full" ? (
+        <>
         {/* Snapshot */}
         <div className="rounded-xl border bg-white p-4">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -236,6 +242,9 @@ export default async function RiskDetailPage(props: {
             </div>
           )}
         </div>
+
+        </>
+        ) : null}
 
         {/* Action plans vinculados */}
         <div className="rounded-xl border bg-white overflow-hidden">

@@ -324,7 +324,7 @@ export async function createControlWithKpis(
     if (risk_code) {
       const riskRes = await sql<{ id: string }>`
         INSERT INTO risk_catalog (
-          tenant_id, risk_code, title, description, classification, created_at
+          tenant_id, risk_code, title, description, classification, source, natureza, created_at
         )
         VALUES (
           ${ctx.tenantId}::uuid,
@@ -332,6 +332,8 @@ export async function createControlWithKpis(
           ${emptyToNull(input.risk_name)},
           ${emptyToNull(input.risk_description)},
           ${normalizeRiskClassification(input.risk_classification)},
+          NULL,
+          NULL,
           now()
         )
         ON CONFLICT (tenant_id, risk_code)
@@ -339,6 +341,8 @@ export async function createControlWithKpis(
           title = COALESCE(EXCLUDED.title, risk_catalog.title),
           description = COALESCE(EXCLUDED.description, risk_catalog.description),
           classification = COALESCE(EXCLUDED.classification, risk_catalog.classification),
+          source = COALESCE(EXCLUDED.source, risk_catalog.source),
+          natureza = COALESCE(EXCLUDED.natureza, risk_catalog.natureza),
           updated_at = now()
         RETURNING id::text AS id
       `
@@ -648,7 +652,7 @@ export async function updateControlWithKpis(
     if (risk_code) {
       const riskRes = await sql<{ id: string }>`
         INSERT INTO risk_catalog (
-          tenant_id, risk_code, title, description, classification, created_at
+          tenant_id, risk_code, title, description, classification, source, natureza, created_at
         )
         VALUES (
           ${ctx.tenantId}::uuid,
@@ -656,6 +660,8 @@ export async function updateControlWithKpis(
           ${emptyToNull(input.risk_name)},
           ${emptyToNull(input.risk_description)},
           ${normalizeRiskClassification(input.risk_classification)},
+          NULL,
+          NULL,
           now()
         )
         ON CONFLICT (tenant_id, risk_code)
@@ -663,6 +669,8 @@ export async function updateControlWithKpis(
           title = COALESCE(EXCLUDED.title, risk_catalog.title),
           description = COALESCE(EXCLUDED.description, risk_catalog.description),
           classification = COALESCE(EXCLUDED.classification, risk_catalog.classification),
+          source = COALESCE(EXCLUDED.source, risk_catalog.source),
+          natureza = COALESCE(EXCLUDED.natureza, risk_catalog.natureza),
           updated_at = now()
         RETURNING id::text AS id
       `

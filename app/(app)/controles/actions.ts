@@ -625,7 +625,7 @@ export async function importarControlesCompleto(rows: ImportRow[]) {
       if (risk_code) {
         const riskRes = await sql<{ id: string }>`
           INSERT INTO risk_catalog (
-            tenant_id, risk_code, title, description, classification, created_at
+            tenant_id, risk_code, title, description, classification, source, natureza, created_at
           )
           VALUES (
             ${ctx.tenantId},
@@ -633,6 +633,8 @@ export async function importarControlesCompleto(rows: ImportRow[]) {
             ${emptyToNull(r.risk_name)},
             ${emptyToNull(r.risk_description)},
             ${normalizeRiskClassification(r.risk_classification)},
+            NULL,
+            NULL,
             now()
           )
           ON CONFLICT (tenant_id, risk_code)
@@ -640,6 +642,8 @@ export async function importarControlesCompleto(rows: ImportRow[]) {
             title = COALESCE(EXCLUDED.title, risk_catalog.title),
             description = COALESCE(EXCLUDED.description, risk_catalog.description),
             classification = COALESCE(EXCLUDED.classification, risk_catalog.classification),
+            source = COALESCE(EXCLUDED.source, risk_catalog.source),
+            natureza = COALESCE(EXCLUDED.natureza, risk_catalog.natureza),
             updated_at = now()
           RETURNING id::text AS id
         `
