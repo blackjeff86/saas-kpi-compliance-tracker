@@ -166,6 +166,8 @@ export async function fetchRiskById(riskId: string): Promise<{
 
   const risk: RiskDetail = {
     ...riskRow,
+    classification: riskRow.classification as RiskClassification,
+    status: riskRow.status as RiskStatus,
     source: "full",
   }
 
