@@ -1,4 +1,7 @@
-import React from "react"
+"use client"
+
+import React, { useEffect } from "react"
+import { usePageTitle } from "./contexts/PageTitleContext"
 
 export default function PageHeader({
   title,
@@ -11,6 +14,13 @@ export default function PageHeader({
   right?: React.ReactNode
   eyebrow?: React.ReactNode
 }) {
+  const { setTitle } = usePageTitle()
+
+  useEffect(() => {
+    setTitle(title)
+    return () => setTitle(null)
+  }, [title, setTitle])
+
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">

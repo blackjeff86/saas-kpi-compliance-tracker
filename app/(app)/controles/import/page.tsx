@@ -1,5 +1,6 @@
 // app/(app)/controles/import/page.tsx
 import Link from "next/link"
+import SetPageTitle from "../../components/SetPageTitle"
 import PageContainer from "../../PageContainer"
 import ImportControlsClient from "./ImportControlsClient"
 import { ChevronLeft } from "lucide-react"
@@ -7,6 +8,7 @@ import { ChevronLeft } from "lucide-react"
 export default async function ImportControlsPage() {
   return (
     <PageContainer variant="default">
+      <SetPageTitle title="Importação de Controles (CSV)" />
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between gap-4">

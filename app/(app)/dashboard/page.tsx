@@ -1,6 +1,7 @@
 // app/(app)/dashboard/page.tsx
 import Link from "next/link"
 import PageContainer from "../PageContainer"
+import SetPageTitle from "../components/SetPageTitle"
 import { fetchDashboardSummary } from "./actions"
 import { CheckCircle2, Clock, AlertTriangle, TrendingDown, MoreVertical, Download } from "lucide-react"
 import FiltersBar from "./FiltersBar"
@@ -103,6 +104,7 @@ export default async function Page({
 
   return (
     <PageContainer variant="dashboard">
+      <SetPageTitle title="Dashboard" />
       <div className="space-y-6">
         {/* Header + filtros + PDF */}
         <div className="flex flex-col gap-4">

@@ -22,22 +22,22 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="h-[100svh] w-full overflow-hidden bg-white text-slate-900 antialiased">
+    <div className="h-[100svh] w-full overflow-hidden bg-[#0B1220] text-slate-900 antialiased">
       <div className="flex h-full w-full">
-        {/* LEFT PANEL (desktop) */}
+        {/* LEFT PANEL (desktop) - mesma cor do menu lateral */}
         <div className="relative hidden w-1/2 items-center justify-center overflow-hidden lg:flex">
-          <div className="absolute inset-0 bg-primary" />
+          <div className="absolute inset-0 bg-[#0B1220]" />
 
           <div
             className="absolute inset-0 opacity-30"
             style={{
-              backgroundImage: "radial-gradient(rgba(255,255,255,0.12) 1px, transparent 1px)",
+              backgroundImage: "radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px)",
               backgroundSize: "24px 24px",
             }}
           />
 
           <div className="absolute left-[-10%] top-[-10%] h-96 w-96 rounded-full bg-white/5 blur-3xl" />
-          <div className="absolute bottom-[-10%] right-[-10%] h-[500px] w-[500px] rounded-full bg-blue-400/10 blur-3xl" />
+          <div className="absolute bottom-[-10%] right-[-10%] h-[500px] w-[500px] rounded-full bg-[#06B6D4]/10 blur-3xl" />
 
           <div className="relative z-10 flex flex-col items-center px-12 py-16 text-center">
             <div className="mb-4 flex items-center justify-center">
@@ -56,7 +56,7 @@ export default function LoginPage() {
               KPI Compliance Tracker
             </h1>
 
-            <p className="max-w-md text-lg font-light leading-relaxed text-blue-100">
+            <p className="max-w-md text-lg font-light leading-relaxed text-white/80">
               Plataforma SaaS para gestão de Governança, Riscos, Controles e KPIs.
             </p>
 
@@ -172,7 +172,7 @@ export default function LoginPage() {
               <div className="space-y-4">
                 <button
                   type="submit"
-                  className="group relative flex w-full justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-primary/30 transition-all hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                  className="group relative flex w-full justify-center rounded-lg bg-[#0B1220] px-4 py-2.5 text-sm font-medium text-white shadow-lg transition-all hover:bg-[#0f1a2e] focus:outline-none focus:ring-2 focus:ring-[#0B1220] focus:ring-offset-2"
                 >
                   Entrar
                 </button>

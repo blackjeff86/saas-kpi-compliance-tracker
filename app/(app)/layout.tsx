@@ -2,6 +2,7 @@
 import Image from "next/image"
 import AppHeader from "./AppHeader"
 import SidebarNav from "./SidebarNav"
+import { PageTitleProvider } from "./contexts/PageTitleContext"
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const user = {
@@ -35,10 +36,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* CONTENT */}
       <div className="flex min-w-0 flex-1 flex-col bg-[#F6F8FC]">
-        <div className="no-print">
-          <AppHeader user={user} />
-        </div>
-        {children}
+        <PageTitleProvider>
+          <div className="no-print">
+            <AppHeader user={user} />
+          </div>
+          {children}
+        </PageTitleProvider>
       </div>
     </div>
   )

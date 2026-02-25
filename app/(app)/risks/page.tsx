@@ -1,5 +1,6 @@
 // app/(app)/risks/page.tsx
 import Link from "next/link"
+import SetPageTitle from "../components/SetPageTitle"
 import PageContainer from "../PageContainer"
 import {
   fetchRisksFilterOptions,
@@ -101,6 +102,7 @@ WHERE tenant_id = '${heatmap.tenantId}'::uuid
 
   return (
     <PageContainer variant="default">
+      <SetPageTitle title="Gestão de Riscos" />
       <div className="space-y-6">
         {/* HERO */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
