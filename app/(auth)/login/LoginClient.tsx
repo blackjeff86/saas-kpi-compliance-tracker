@@ -26,7 +26,7 @@ export default function LoginPage() {
       <div className="flex h-full w-full">
         {/* LEFT PANEL (desktop) */}
         <div className="relative hidden w-1/2 items-center justify-center overflow-hidden lg:flex">
-          <div className="absolute inset-0 bg-[rgb(17,82,212)]" />
+          <div className="absolute inset-0 bg-primary" />
 
           <div
             className="absolute inset-0 opacity-30"
@@ -44,11 +44,11 @@ export default function LoginPage() {
               <Image
                 src="/logo3.png"
                 alt="KPI Compliance Tracker"
-                width={720}
-                height={280}
+                width={160}
+                height={160}
                 priority
                 unoptimized
-                className="h-40 w-auto object-contain"
+                className="h-28 w-auto object-contain"
               />
             </div>
 
@@ -91,7 +91,7 @@ export default function LoginPage() {
 
             {/* Mobile logo */}
             <div className="flex justify-center lg:hidden">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[rgb(17,82,212)]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
                 <ShieldCheck className="h-6 w-6 text-white" />
               </div>
             </div>
@@ -124,7 +124,7 @@ export default function LoginPage() {
                       type="email"
                       autoComplete="email"
                       placeholder="seu.email@empresa.com"
-                      className="block w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[rgb(17,82,212)]"
+                      className="block w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
                     />
                   </div>
                 </div>
@@ -144,7 +144,7 @@ export default function LoginPage() {
                       type={showPassword ? "text" : "password"}
                       autoComplete="current-password"
                       placeholder="••••••••"
-                      className="block w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-10 text-sm placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[rgb(17,82,212)]"
+                      className="block w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-10 text-sm placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
                     />
 
                     <button
@@ -162,7 +162,7 @@ export default function LoginPage() {
               <div className="flex items-center justify-end">
                 <button
                   type="button"
-                  className="text-sm font-medium text-[rgb(17,82,212)] hover:text-[rgb(13,60,160)] transition-colors"
+                  className="text-sm font-medium text-primary hover:text-primary-hover transition-colors"
                   onClick={() => alert("Backlog: fluxo de recuperação de senha")}
                 >
                   Esqueceu sua senha?
@@ -172,7 +172,7 @@ export default function LoginPage() {
               <div className="space-y-4">
                 <button
                   type="submit"
-                  className="group relative flex w-full justify-center rounded-lg bg-[rgb(17,82,212)] px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-[rgb(17,82,212)]/30 transition-all hover:bg-[rgb(13,60,160)] hover:shadow-[rgb(17,82,212)]/40 focus:outline-none focus:ring-2 focus:ring-[rgb(17,82,212)] focus:ring-offset-2"
+                  className="group relative flex w-full justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-primary/30 transition-all hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                 >
                   Entrar
                 </button>
@@ -183,7 +183,7 @@ export default function LoginPage() {
               Não tem uma conta?{" "}
               <button
                 type="button"
-                className="font-medium text-[rgb(17,82,212)] hover:text-[rgb(13,60,160)] transition-colors"
+                className="font-medium text-primary hover:text-primary-hover transition-colors"
                 onClick={() => alert("Backlog: solicitar acesso / onboarding")}
               >
                 Solicite acesso

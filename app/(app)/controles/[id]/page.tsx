@@ -379,23 +379,15 @@ export default async function ControleDetailPage({
                   <div className="overflow-x-auto">
                     <table className="w-full text-left">
                       <thead>
-                        <tr className="bg-slate-50 border-b border-slate-100">
-                          <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                            Nome do KPI
-                          </th>
-                          <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                            Meta
-                          </th>
-                          <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                            Resultado (período)
-                          </th>
-                          <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                            Status (período)
-                          </th>
+                        <tr className="bg-[#F2F6FF] border-b border-slate-100">
+                          <th className="ui-table-th px-4 py-3">Nome do KPI</th>
+                          <th className="ui-table-th px-4 py-3">Meta</th>
+                          <th className="ui-table-th px-4 py-3">Resultado (período)</th>
+                          <th className="ui-table-th px-4 py-3">Status (período)</th>
                         </tr>
                       </thead>
 
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody className="ui-table-tbody divide-y divide-slate-100">
                         {kpis.length === 0 ? (
                           <tr>
                             <td colSpan={4} className="px-4 py-8">
@@ -414,12 +406,12 @@ export default async function ControleDetailPage({
                                   className="inline-flex flex-col hover:underline"
                                   title="Abrir detalhe do KPI"
                                 >
-                                  <span className="text-sm font-medium text-slate-700">{k.kpi_name}</span>
+                                  <span className="font-medium text-slate-700">{k.kpi_name}</span>
                                   <div className="text-xs text-slate-500 mt-0.5">{k.kpi_code}</div>
                                 </Link>
                               </td>
 
-                              <td className="px-4 py-3 text-sm text-slate-600">
+                              <td className="px-4 py-3 text-slate-600">
                                 {k.target_value === null || k.target_value === undefined ? "—" : String(k.target_value)}
                               </td>
 
@@ -471,29 +463,17 @@ export default async function ControleDetailPage({
                     <div className="overflow-x-auto">
                       <table className="w-full text-left">
                         <thead>
-                          <tr className="bg-slate-50 border-b border-slate-100">
-                            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                              KPI
-                            </th>
-                            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                              Plano
-                            </th>
-                            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                              Prioridade
-                            </th>
-                            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                              Status
-                            </th>
-                            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                              Due date
-                            </th>
-                            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                              Atualizado
-                            </th>
+                          <tr className="bg-[#F2F6FF] border-b border-slate-100">
+                            <th className="ui-table-th px-4 py-3">KPI</th>
+                            <th className="ui-table-th px-4 py-3">Plano</th>
+                            <th className="ui-table-th px-4 py-3">Prioridade</th>
+                            <th className="ui-table-th px-4 py-3">Status</th>
+                            <th className="ui-table-th px-4 py-3">Data de vencimento</th>
+                            <th className="ui-table-th px-4 py-3">Atualizado</th>
                           </tr>
                         </thead>
 
-                        <tbody className="divide-y divide-slate-100">
+                        <tbody className="ui-table-tbody divide-y divide-slate-100">
                           {actionPlans.map((ap) => (
                             <tr key={ap.id} className="hover:bg-slate-50">
                               <td className="px-4 py-3">
@@ -522,19 +502,19 @@ export default async function ControleDetailPage({
                               </td>
 
                               <td className="px-4 py-3">
-                                <span className="text-sm font-medium text-slate-800">{ap.title}</span>
+                                <span className="font-medium text-slate-800">{ap.title}</span>
                                 <div className="text-xs text-slate-400 mt-0.5 font-mono">{ap.id}</div>
                               </td>
 
-                              <td className="px-4 py-3 text-sm text-slate-700">{ap.priority ?? "—"}</td>
+                              <td className="px-4 py-3 text-slate-700">{ap.priority ?? "—"}</td>
 
-                              <td className="px-4 py-3 text-sm text-slate-700">{ap.status ?? "—"}</td>
+                              <td className="px-4 py-3 text-slate-700">{ap.status ?? "—"}</td>
 
-                              <td className="px-4 py-3 text-sm text-slate-700">
+                              <td className="px-4 py-3 text-slate-700">
                                 {ap.due_date ? new Date(ap.due_date).toLocaleDateString("pt-BR") : "—"}
                               </td>
 
-                              <td className="px-4 py-3 text-sm text-slate-500">
+                              <td className="px-4 py-3 text-slate-500">
                                 {ap.updated_at ? new Date(ap.updated_at).toLocaleString("pt-BR") : "—"}
                               </td>
                             </tr>
@@ -639,7 +619,7 @@ export default async function ControleDetailPage({
 
             <div
               className="border border-slate-200 rounded-xl p-4 space-y-5"
-              style={{ backgroundColor: "var(--brand-1)", color: "white" }}
+              style={{ backgroundColor: "var(--primary)", color: "white" }}
             >
               <div className="flex items-center gap-2">
                 <ShieldAlert className="w-4 h-4" style={{ color: "white" }} />

@@ -714,7 +714,7 @@ export default function KpiExecutionClient(props: {
 
           <div
             className="rounded-xl p-6 text-white shadow-lg"
-            style={{ background: "linear-gradient(135deg, var(--brand-1), #1d4ed8)" }}
+            style={{ background: "linear-gradient(135deg, var(--primary), #1D4ED8)" }}
           >
             <h3 className="font-bold mb-2">Próxima Revisão</h3>
             <p className="text-blue-100 text-sm mb-4">Placeholder: depois calculamos pela frequência.</p>
@@ -1056,16 +1056,16 @@ export default function KpiExecutionClient(props: {
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider">
-                <th className="px-6 py-4">Período</th>
-                <th className="px-6 py-4">Valor</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4">Data Registro</th>
-                <th className="px-6 py-4 text-right">Ações</th>
+              <tr className="bg-[#F2F6FF]">
+                <th className="ui-table-th px-6 py-4">Período</th>
+                <th className="ui-table-th px-6 py-4">Valor</th>
+                <th className="ui-table-th px-6 py-4">Status</th>
+                <th className="ui-table-th px-6 py-4">Data registro</th>
+                <th className="ui-table-th px-6 py-4 text-right">Ações</th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="ui-table-tbody divide-y divide-slate-100">
               {filteredHistory.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-6 text-sm text-slate-500">
@@ -1090,7 +1090,7 @@ export default function KpiExecutionClient(props: {
                         {autoStatusLabel(h.auto_status)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-500">
+                    <td className="px-6 py-4 text-slate-500">
                       {h.created_at ? new Date(h.created_at).toLocaleDateString("pt-BR") : "—"}
                     </td>
                     <td className="px-6 py-4 text-right">

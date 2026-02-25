@@ -9,19 +9,18 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        default: "bg-[#06B6D4] text-white hover:bg-[#0891B2] active:bg-[#0E7490] focus-visible:ring-[rgba(6,182,212,0.35)]",
         destructive:
-          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
-        outline:
-          "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
+          "bg-[#EF4444] text-white hover:bg-[#DC2626] focus-visible:ring-red-300",
+        outline: "border border-[#E6ECF5] bg-white text-[#0F172A] shadow-xs hover:bg-[#F2F6FF] focus-visible:ring-[rgba(6,182,212,0.35)]",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost:
-          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
-        link: "text-primary underline-offset-4 hover:underline",
+          "hover:bg-[#F2F6FF] hover:text-[#0F172A] focus-visible:ring-[rgba(6,182,212,0.35)]",
+        link: "text-[#06B6D4] underline-offset-4 hover:underline hover:text-[#0891B2]",
       },
       size: {
-        default: "h-9 px-4 py-2 has-[>svg]:px-3",
+        default: "h-10 rounded-xl px-4 py-2 has-[>svg]:px-3",
         xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
         lg: "h-10 rounded-md px-6 has-[>svg]:px-4",

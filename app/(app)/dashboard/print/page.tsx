@@ -60,10 +60,10 @@ export default async function DashboardPrintPage() {
         </h2>
 
         <table className="w-full border text-xs">
-          <thead className="bg-slate-100">
-            <tr>
-              <th className="px-3 py-2 text-left">Mês</th>
-              <th className="px-3 py-2 text-left">% In Target</th>
+          <thead>
+            <tr className="bg-[#F2F6FF]">
+              <th className="ui-table-th px-3 py-2 text-left">Mês</th>
+              <th className="ui-table-th px-3 py-2 text-left">% na meta</th>
             </tr>
           </thead>
           <tbody>
@@ -84,12 +84,12 @@ export default async function DashboardPrintPage() {
         </h2>
 
         <table className="w-full border text-xs">
-          <thead className="bg-slate-100">
-            <tr>
-              <th className="px-3 py-2 text-left">Código</th>
-              <th className="px-3 py-2 text-left">Nome</th>
-              <th className="px-3 py-2 text-left">Responsável</th>
-              <th className="px-3 py-2 text-left">Status</th>
+          <thead>
+            <tr className="bg-[#F2F6FF]">
+              <th className="ui-table-th px-3 py-2 text-left">Código</th>
+              <th className="ui-table-th px-3 py-2 text-left">Nome</th>
+              <th className="ui-table-th px-3 py-2 text-left">Responsável</th>
+              <th className="ui-table-th px-3 py-2 text-left">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -120,12 +120,12 @@ export default async function DashboardPrintPage() {
         </h2>
 
         <table className="w-full border text-xs">
-          <thead className="bg-slate-100">
-            <tr>
-              <th className="px-3 py-2 text-left">Título</th>
-              <th className="px-3 py-2 text-left">Prioridade</th>
-              <th className="px-3 py-2 text-left">Status</th>
-              <th className="px-3 py-2 text-left">Vencimento</th>
+          <thead>
+            <tr className="bg-[#F2F6FF]">
+              <th className="ui-table-th px-3 py-2 text-left">Título</th>
+              <th className="ui-table-th px-3 py-2 text-left">Prioridade</th>
+              <th className="ui-table-th px-3 py-2 text-left">Status</th>
+              <th className="ui-table-th px-3 py-2 text-left">Vencimento</th>
             </tr>
           </thead>
           <tbody>

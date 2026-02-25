@@ -82,18 +82,17 @@ export default function FiltersBar({
   }
 
   return (
-    <div className="no-print bg-white border border-slate-200 rounded-xl p-4">
+    <div className="no-print ui-card p-4">
       <div className="flex flex-col gap-3">
         {/* linha principal */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
           {/* Framework (mais largo) */}
           <div className="md:col-span-6">
-            <label className="block text-xs font-medium text-slate-600 mb-1">Framework</label>
+            <label className="mb-1 block text-xs font-medium text-[#475569]">Framework</label>
             <select
               value={frameworkId}
               onChange={(e) => setFrameworkId(e.target.value)}
-              className="w-full h-10 bg-white border border-slate-200 rounded-lg px-3 text-sm
-                         focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="ui-input"
             >
               <option value="">Todos</option>
               {frameworks.map((f) => (
@@ -106,12 +105,11 @@ export default function FiltersBar({
 
           {/* Mês */}
           <div className="md:col-span-3">
-            <label className="block text-xs font-medium text-slate-600 mb-1">Mês</label>
+            <label className="mb-1 block text-xs font-medium text-[#475569]">Mês</label>
             <select
               value={month}
               onChange={(e) => setMonth(e.target.value)}
-              className="w-full h-10 bg-white border border-slate-200 rounded-lg px-3 text-sm
-                         focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="ui-input"
             >
               {months.map((m) => (
                 <option key={m.v} value={String(m.v)}>
@@ -123,12 +121,11 @@ export default function FiltersBar({
 
           {/* Ano */}
           <div className="md:col-span-2">
-            <label className="block text-xs font-medium text-slate-600 mb-1">Ano</label>
+            <label className="mb-1 block text-xs font-medium text-[#475569]">Ano</label>
             <select
               value={year}
               onChange={(e) => setYear(e.target.value)}
-              className="w-full h-10 bg-white border border-slate-200 rounded-lg px-3 text-sm
-                         focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="ui-input"
             >
               {years.map((y) => (
                 <option key={y} value={y}>
@@ -143,9 +140,7 @@ export default function FiltersBar({
             <button
               type="button"
               onClick={clear}
-              className="h-10 w-full md:w-auto inline-flex items-center justify-center gap-2
-                         px-3 rounded-lg border border-slate-200 bg-white text-slate-700 text-sm font-medium
-                         hover:bg-slate-50 transition disabled:opacity-60"
+               className="ui-btn-secondary disabled:opacity-60 w-full md:w-auto"
               title="Limpar filtros"
               disabled={isPending}
             >
@@ -156,12 +151,12 @@ export default function FiltersBar({
         </div>
 
         {/* linha secundária (feedback minimalista) */}
-        <div className="flex items-center justify-between text-xs text-slate-500">
+        <div className="flex items-center justify-between text-xs text-[#64748B]">
           <span>
             {hasActiveFilters ? (
               <>
                 Filtros aplicados automaticamente •{" "}
-                <span className="text-slate-700 font-medium">Framework</span>
+                 <span className="font-medium text-[#0F172A]">Framework</span>
               </>
             ) : (
               <>Seleção aplicada automaticamente</>
@@ -169,7 +164,7 @@ export default function FiltersBar({
           </span>
 
           <span className="inline-flex items-center gap-2">
-            <span className={`h-1.5 w-1.5 rounded-full ${isPending ? "bg-primary" : "bg-emerald-500"} opacity-80`} />
+             <span className={`h-1.5 w-1.5 rounded-full ${isPending ? "bg-[#06B6D4]" : "bg-[#10B981]"} opacity-80`} />
             {isPending ? "Atualizando…" : "Atualizado"}
           </span>
         </div>

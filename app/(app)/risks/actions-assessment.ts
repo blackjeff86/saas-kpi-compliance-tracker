@@ -76,6 +76,20 @@ export async function addRiskAssessment(input: {
   // 3) Se high/critical: garante action plan (Regra A: nunca fecha automaticamente)
   await ensureActionPlanForRisk(input.riskId)
 
+  // 4) Auditoria
+  await sql`
+    INSERT INTO audit_events (tenant_id, entity_type, entity_id, action, actor_user_id, metadata, created_at)
+    VALUES (
+      ${ctx.tenantId}::uuid,
+      'risk',
+      ${input.riskId}::uuid,
+      'risk_assessed',
+      ${ctx.userId}::uuid,
+      ${JSON.stringify({ score, classification, impact, likelihood, notes: input.notes })}::jsonb,
+      now()
+    )
+  `
+
   revalidatePath(`/risks/${input.riskId}`)
   revalidatePath("/risks")
   revalidatePath("/action-plans")

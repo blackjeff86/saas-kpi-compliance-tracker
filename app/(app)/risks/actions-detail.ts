@@ -23,6 +23,10 @@ export type RiskDetail = {
   updated_at: string
   /** 'catalog' = risk_catalog (sem assessments), 'full' = risks (com assessments) */
   source: "catalog" | "full"
+  /** Fonte do risco (risk_catalog.source) */
+  risk_source?: string | null
+  /** Natureza do risco (risk_catalog.natureza) */
+  natureza?: string | null
 }
 
 export type RiskAssessmentRow = {
@@ -56,13 +60,18 @@ export async function fetchRiskById(riskId: string): Promise<{
   const ctx = await getContext()
 
   // 1) Tenta risk_catalog primeiro (lista de riscos usa esta tabela)
-  const catalogRes = await sql<{ id: string; risk_code: string; title: string; description: string | null; classification: string; created_at: string; updated_at: string }>`
+  const catalogRes = await sql<{ id: string; risk_code: string; title: string; description: string | null; classification: string; impact: number | null; likelihood: number | null; source: string | null; natureza: string | null; status: string | null; created_at: string; updated_at: string }>`
     SELECT
       id::text AS id,
       risk_code::text AS risk_code,
       title::text AS title,
       description::text AS description,
       classification::text AS classification,
+      impact::int AS impact,
+      likelihood::int AS likelihood,
+      source::text AS source,
+      natureza::text AS natureza,
+      status::text AS status,
       created_at::text AS created_at,
       COALESCE(updated_at::text, created_at::text) AS updated_at
     FROM risk_catalog
@@ -72,6 +81,8 @@ export async function fetchRiskById(riskId: string): Promise<{
   `
   const catalog = catalogRes.rows[0]
   if (catalog) {
+    const impact = catalog.impact != null && catalog.impact >= 1 && catalog.impact <= 5 ? catalog.impact : 0
+    const likelihood = catalog.likelihood != null && catalog.likelihood >= 1 && catalog.likelihood <= 5 ? catalog.likelihood : 0
     const risk: RiskDetail = {
       id: catalog.id,
       title: catalog.title || "",
@@ -79,15 +90,17 @@ export async function fetchRiskById(riskId: string): Promise<{
       domain: catalog.risk_code,
       risk_code: catalog.risk_code,
       classification: (catalog.classification || "low") as RiskClassification,
-      impact: 0,
-      likelihood: 0,
-      risk_score: 0,
-      status: "open" as RiskStatus,
+      impact,
+      likelihood,
+      risk_score: impact * likelihood,
+      status: (catalog.status && ["open", "mitigating", "accepted", "closed"].includes(catalog.status) ? catalog.status : "open") as RiskStatus,
       owner_user_id: null,
       owner_name: null,
       created_at: catalog.created_at,
       updated_at: catalog.updated_at,
       source: "catalog",
+      risk_source: catalog.source ?? null,
+      natureza: catalog.natureza ?? null,
     }
     const actionPlansRes = await sql<RiskActionPlanRow>`
       SELECT

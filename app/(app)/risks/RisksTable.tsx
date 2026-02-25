@@ -11,6 +11,8 @@ type Row = {
   classification: string
   responsible_name: string | null
   status: string
+  impact: number | null
+  likelihood: number | null
 }
 
 function riskBadge(v?: string | null) {
@@ -33,43 +35,32 @@ function statusBadge(v?: string | null) {
   return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
 }
 
-export default function RisksTable({ rows }: { rows: Row[] }) {
+export default function RisksTable({ rows, returnTo }: { rows: Row[]; returnTo?: string }) {
   const router = useRouter()
 
   const go = (id: string) => {
-    router.push(`/risks/${id}`)
+    const url = returnTo ? `/risks/${id}?returnTo=${encodeURIComponent(returnTo)}` : `/risks/${id}`
+    router.push(url)
   }
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left border-collapse">
         <thead>
-          <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
-            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              ID do risco
-            </th>
-            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Nome do risco
-            </th>
-            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Fonte
-            </th>
-            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Natureza
-            </th>
-            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Criticidade
-            </th>
-            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Responsável
-            </th>
-            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Status
-            </th>
+          <tr className="bg-[#F2F6FF] border-b border-slate-200 dark:border-slate-800">
+            <th className="ui-table-th px-4 py-3">ID do risco</th>
+            <th className="ui-table-th px-4 py-3">Nome do risco</th>
+            <th className="ui-table-th px-4 py-3">Fonte</th>
+            <th className="ui-table-th px-4 py-3">Natureza</th>
+            <th className="ui-table-th px-4 py-3">Criticidade</th>
+            <th className="ui-table-th px-4 py-3">Impacto</th>
+            <th className="ui-table-th px-4 py-3">Probab.</th>
+            <th className="ui-table-th px-4 py-3">Responsável</th>
+            <th className="ui-table-th px-4 py-3">Status</th>
           </tr>
         </thead>
 
-        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+        <tbody className="ui-table-tbody divide-y divide-slate-100 dark:divide-slate-800">
           {rows.map((r) => (
             <tr
               key={r.id}
@@ -84,9 +75,9 @@ export default function RisksTable({ rows }: { rows: Row[] }) {
             >
               <td className="px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <div className="mt-1 h-8 w-1 rounded-full bg-transparent group-hover:bg-primary/60 transition-colors" />
+                  <div className="mt-1 h-8 w-1 rounded-full bg-transparent group-hover:bg-[#06B6D4]/60 transition-colors" />
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                    <div className="font-semibold text-slate-900 dark:text-white">
                       <span className="font-mono text-slate-500 dark:text-slate-400">{r.risk_code}</span>
                     </div>
                   </div>
@@ -94,14 +85,14 @@ export default function RisksTable({ rows }: { rows: Row[] }) {
               </td>
 
               <td className="px-4 py-3 min-w-0">
-                <div className="text-sm font-semibold text-slate-900 dark:text-white truncate max-w-[220px]">
+                <div className="font-semibold text-slate-900 dark:text-white truncate max-w-[220px]">
                   {r.title || "—"}
                 </div>
               </td>
 
-              <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200">{r.source || "—"}</td>
+              <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.source || "—"}</td>
 
-              <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200">{r.natureza || "—"}</td>
+              <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.natureza || "—"}</td>
 
               <td className="px-4 py-3">
                 <span
@@ -114,7 +105,15 @@ export default function RisksTable({ rows }: { rows: Row[] }) {
                 </span>
               </td>
 
-              <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200">
+              <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                {r.impact != null ? r.impact : "—"}
+              </td>
+
+              <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                {r.likelihood != null ? r.likelihood : "—"}
+              </td>
+
+              <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                 {r.responsible_name || "—"}
               </td>
 

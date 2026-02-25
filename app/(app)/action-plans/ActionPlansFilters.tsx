@@ -65,7 +65,7 @@ export default function ActionPlansFilters({
         {riskId ? <input type="hidden" name="risk" value={riskId} /> : null}
 
         <div className="min-w-[160px] flex-1">
-          <label htmlFor="framework" className="mb-1 block text-xs font-semibold uppercase text-slate-500">
+          <label htmlFor="framework" className="mb-1 block text-xs font-semibold text-slate-500">
             Framework
           </label>
           <select
@@ -85,8 +85,8 @@ export default function ActionPlansFilters({
         </div>
 
         <div className="min-w-[180px] flex-1">
-          <label htmlFor="responsible" className="mb-1 block text-xs font-semibold uppercase text-slate-500">
-            Responsavel
+          <label htmlFor="responsible" className="mb-1 block text-xs font-semibold text-slate-500">
+            Responsável
           </label>
           <select
             id="responsible"
@@ -105,7 +105,7 @@ export default function ActionPlansFilters({
         </div>
 
         <div className="min-w-[160px] flex-1">
-          <label htmlFor="status" className="mb-1 block text-xs font-semibold uppercase text-slate-500">
+          <label htmlFor="status" className="mb-1 block text-xs font-semibold text-slate-500">
             Status
           </label>
           <select
@@ -125,7 +125,7 @@ export default function ActionPlansFilters({
         </div>
 
         <div className="min-w-[160px] flex-1">
-          <label htmlFor="priority" className="mb-1 block text-xs font-semibold uppercase text-slate-500">
+          <label htmlFor="priority" className="mb-1 block text-xs font-semibold text-slate-500">
             Prioridade
           </label>
           <select

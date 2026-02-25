@@ -700,19 +700,17 @@ export default function ImportControlsClient() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider w-10">#</th>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Controle</th>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Framework</th>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Owner / Focal</th>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">KPI</th>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">
-                  Validação
-                </th>
+              <tr className="bg-[#F2F6FF] border-b border-slate-200">
+                <th className="ui-table-th px-6 py-3 w-10">#</th>
+                <th className="ui-table-th px-6 py-3">Controle</th>
+                <th className="ui-table-th px-6 py-3">Framework</th>
+                <th className="ui-table-th px-6 py-3">Responsável / ponto focal</th>
+                <th className="ui-table-th px-6 py-3">KPI</th>
+                <th className="ui-table-th px-6 py-3 text-right">Validação</th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="ui-table-tbody divide-y divide-slate-100">
               {validated.withValidation.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-6 text-sm text-slate-500">
@@ -722,13 +720,13 @@ export default function ImportControlsClient() {
               ) : (
                 validated.withValidation.slice(0, 50).map(({ idx, row, v }) => (
                   <tr key={idx} className={v.ok ? "hover:bg-slate-50" : "bg-red-50/40 hover:bg-red-50/60"}>
-                    <td className="px-6 py-3 text-sm text-slate-500">{idx}</td>
-                    <td className="px-6 py-3 text-sm">
+                    <td className="px-6 py-3 text-slate-500">{idx}</td>
+                    <td className="px-6 py-3">
                       <div className="font-mono text-slate-700">{row.control_code || "—"}</div>
                       <div className="text-xs text-slate-500">{row.control_name || "—"}</div>
                       {row.control_goal ? <div className="text-[11px] text-slate-400 mt-1">Goal: {row.control_goal}</div> : null}
                     </td>
-                    <td className="px-6 py-3 text-sm text-slate-700">{row.framework || "—"}</td>
+                    <td className="px-6 py-3 text-slate-700">{row.framework || "—"}</td>
                     <td className="px-6 py-3 text-sm text-slate-700">
                       <div className="text-xs">
                         <span className="font-semibold">Owner:</span> {row.control_owner_name || row.control_owner_email || "—"}
@@ -737,7 +735,7 @@ export default function ImportControlsClient() {
                         <span className="font-semibold text-slate-600">Focal:</span> {row.focal_point_name || row.focal_point_email || "—"}
                       </div>
                     </td>
-                    <td className="px-6 py-3 text-sm text-slate-700">{row.kpi_code || "—"}</td>
+                    <td className="px-6 py-3 text-slate-700">{row.kpi_code || "—"}</td>
                     <td className="px-6 py-3 text-right">
                       {v.ok ? (
                         <span className="text-emerald-600 text-xs font-medium">Sucesso</span>

@@ -47,7 +47,9 @@ function buildBreadcrumb(pathname: string) {
   const firstNode = map[first]
   if (firstNode) out.push(firstNode)
 
-  if (first === "controles" && segs.length >= 2) {
+  // Só adiciona "Detalhamento" em páginas de detalhe (ex: /controles/123, /risks/456)
+  const detailRoutes = ["controles", "risks", "kpis", "action-plans", "execucoes"]
+  if (first && detailRoutes.includes(first) && segs.length >= 2) {
     out.push({ label: "Detalhamento", href: pathname })
   }
 
@@ -61,40 +63,44 @@ export default function AppHeader({ user }: { user: UserHeader }) {
   const userInitials = useMemo(() => initials(user.name), [user.name])
 
   return (
-    <header className="h-14 bg-white border-b flex items-center justify-between px-6 sticky top-0 z-10">
-      {/* breadcrumb */}
-      <nav aria-label="Breadcrumb" className="flex items-center">
-        <ol className="flex items-center gap-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
-          {crumb.map((c, idx) => {
-            const last = idx === crumb.length - 1
-            return (
-              <React.Fragment key={`${c.label}-${idx}`}>
-                {idx > 0 ? <ChevronRight className="w-3.5 h-3.5 text-slate-300" /> : null}
-                {last ? (
-                  <li className="text-slate-600">{c.label}</li>
-                ) : (
-                  <li>
-                    <Link href={c.href} className="hover:text-slate-600 transition-colors">
-                      {c.label}
-                    </Link>
-                  </li>
-                )}
-              </React.Fragment>
-            )
-          })}
-        </ol>
-      </nav>
+    <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b border-[#E6ECF5] bg-white px-6">
+      {/* breadcrumb - só exibe quando há mais de um nível (ex: Controles > Detalhamento) */}
+      {crumb.length > 1 ? (
+        <nav aria-label="Breadcrumb" className="flex items-center">
+          <ol className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-[#475569]">
+            {crumb.map((c, idx) => {
+              const last = idx === crumb.length - 1
+              return (
+                <React.Fragment key={`${c.label}-${idx}`}>
+                  {idx > 0 ? <ChevronRight className="h-3.5 w-3.5 text-[#475569]" /> : null}
+                  {last ? (
+                    <li className="text-[#0F172A]">{c.label}</li>
+                  ) : (
+                    <li>
+                      <Link href={c.href} className="text-[#475569] transition-colors hover:text-[#06B6D4]">
+                        {c.label}
+                      </Link>
+                    </li>
+                  )}
+                </React.Fragment>
+              )
+            })}
+          </ol>
+        </nav>
+      ) : (
+        <div className="flex-1" />
+      )}
 
       {/* right side */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-3">
           <div className="text-right hidden sm:block">
-            <p className="text-sm font-semibold leading-none text-slate-900">{user.name}</p>
-            <p className="text-[11px] text-slate-500 mt-1">{titleCase(user.role)}</p>
+            <p className="text-sm font-semibold leading-none text-[#0F172A]">{user.name}</p>
+            <p className="mt-1 text-[11px] text-[#475569]">{titleCase(user.role)}</p>
           </div>
 
-          <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 grid place-items-center">
-            <span className="text-xs font-bold text-slate-700">{userInitials}</span>
+          <div className="grid h-9 w-9 place-items-center rounded-full border border-[#E6ECF5] bg-[rgba(6,182,212,0.12)]">
+            <span className="text-xs font-bold text-[#06B6D4]">{userInitials}</span>
           </div>
         </div>
       </div>

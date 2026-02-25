@@ -5,7 +5,41 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --color-background: var(--background);
+  /* KPI Compliance - CIANO design system */
+  --color-accent: #06B6D4;
+  --color-accent-hover: #0891B2;
+  --color-accent-pressed: #0E7490;
+  --color-accent-soft: rgba(6,182,212,0.12);
+  --color-accent-ring: rgba(6,182,212,0.35);
+
+  --color-background: #F6F8FC;
+  --color-surface: #FFFFFF;
+  --color-surface-subtle: #F2F6FF;
+  --color-border: #E6ECF5;
+
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748B;
+
+  --color-sidebar: #0B1220;
+  --color-sidebar-hover: rgba(255,255,255,0.05);
+  --color-sidebar-active: #06B6D4;
+
+  --color-success: #10B981;
+  --color-success-soft: rgba(16,185,129,0.14);
+  --color-warning: #F59E0B;
+  --color-warning-soft: rgba(245,158,11,0.16);
+  --color-danger: #EF4444;
+  --color-danger-soft: rgba(239,68,68,0.14);
+  --color-info: #3B82F6;
+  --color-info-soft: rgba(59,130,246,0.14);
+
+  --color-risk-critical: #EF4444;
+  --color-risk-high: #F97316;
+  --color-risk-medium: #EAB308;
+  --color-risk-low: #22C55E;
+
+  --color-primary: var(--primary);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -128,8 +162,7 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
-    @apply bg-background text-foreground;
+    @apply bg-[#F6F8FC] text-[#0F172A];
   }
 }
 
@@ -212,34 +245,93 @@
 
   /* melhora contraste do “primary” no papel */
   .bg-primary\/70 {
-    background-color: #1E3A8A !important;
+    background-color: #06B6D4 !important;
   }
-  .bg-primary\/10 {
-    background-color: rgba(30, 58, 138, 0.10) !important;
+  .bg-primary\/10,
+  .bg-accent-soft {
+    background-color: rgba(6, 182, 212, 0.12) !important;
   }
 }
 
 :root {
-  /* Brand palette */
-  --brand-1: #333b74; /* color1 */
-  --brand-2: #a2a9d6; /* color2 */
-  --brand-3: #2c346c; /* color3 */
-  --brand-4: #5c6494; /* color4 */
-  --brand-5: #b0b3c8; /* color5 */
-  --highlight: #F71866;
-
-  /* usa brand-1 como primary */
-  --primary: var(--brand-1);
+  /* KPI Compliance - CIANO palette */
+  --primary: #06B6D4;
   --primary-foreground: #ffffff;
+  --primary-hover: #0891B2;
+  --primary-pressed: #0E7490;
+  --primary-soft: rgba(6,182,212,0.12);
+  --primary-ring: rgba(6,182,212,0.35);
 
-  /* deixa accent com highlight (onde shadcn usa accent) */
-  --accent: color-mix(in oklab, var(--highlight) 12%, white);
-  --accent-foreground: #111827;
+  --background: #F6F8FC;
+  --foreground: #0F172A;
+  --border: #E6ECF5;
 
-  /* ring um pouco mais “vivo” */
-  --ring: color-mix(in oklab, var(--highlight) 35%, #94a3b8);
+  --accent: #06B6D4;
+  --accent-foreground: #0F172A;
+  --ring: rgba(6,182,212,0.35);
 }
 
 ::selection {
-  background: color-mix(in oklab, var(--highlight) 25%, white);
+  background: rgba(6, 182, 212, 0.2);
+}
+
+/* =========================
+   UI UTILITY CLASSES
+   ========================= */
+@layer components {
+  .ui-card {
+    @apply rounded-2xl border border-[#E6ECF5] bg-white shadow-sm;
+  }
+
+  .ui-card-hover {
+    @apply rounded-2xl border border-[#E6ECF5] bg-white shadow-sm transition-shadow hover:shadow-md;
+  }
+
+  .ui-btn-primary {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#06B6D4] px-4 text-sm font-medium text-white transition-colors hover:bg-[#0891B2] active:bg-[#0E7490] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-[rgba(6,182,212,0.35)];
+  }
+
+  .ui-btn-secondary {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#E6ECF5] bg-white px-4 text-sm font-medium text-[#0F172A] transition-colors hover:bg-[#F2F6FF] focus-visible:ring-2 focus-visible:ring-[rgba(6,182,212,0.35)];
+  }
+
+  .ui-btn-ghost {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium text-[#0F172A] transition-colors hover:bg-[#F2F6FF] focus-visible:ring-2 focus-visible:ring-[rgba(6,182,212,0.35)];
+  }
+
+  .ui-btn-danger {
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#EF4444] px-4 text-sm font-medium text-white transition-colors hover:bg-[#DC2626] disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-red-300;
+  }
+
+  .ui-input {
+    @apply h-10 w-full rounded-xl border border-[#E6ECF5] bg-white px-3 py-2 text-sm text-[#0F172A] placeholder:text-[#64748B] transition-colors hover:border-slate-300 focus:border-[#06B6D4] focus:outline-none focus:ring-2 focus:ring-[rgba(6,182,212,0.35)];
+  }
+
+  .ui-badge-success {
+    @apply inline-flex items-center rounded-full border border-[rgba(16,185,129,0.2)] bg-[rgba(16,185,129,0.14)] px-2.5 py-1 text-xs font-medium text-[#10B981];
+  }
+
+  .ui-badge-warning {
+    @apply inline-flex items-center rounded-full border border-[rgba(245,158,11,0.2)] bg-[rgba(245,158,11,0.16)] px-2.5 py-1 text-xs font-medium text-[#F59E0B];
+  }
+
+  .ui-badge-danger {
+    @apply inline-flex items-center rounded-full border border-[rgba(239,68,68,0.2)] bg-[rgba(239,68,68,0.14)] px-2.5 py-1 text-xs font-medium text-[#EF4444];
+  }
+
+  .ui-badge-info {
+    @apply inline-flex items-center rounded-full border border-[rgba(6,182,212,0.2)] bg-[rgba(6,182,212,0.12)] px-2.5 py-1 text-xs font-medium text-[#06B6D4];
+  }
+
+  .ui-badge-neutral {
+    @apply inline-flex items-center rounded-full border border-[#E6ECF5] bg-[#F6F8FC] px-2.5 py-1 text-xs font-medium text-[#475569];
+  }
+
+  /* Tabelas: cabeçalho 12px (text-xs), destaque por font-semibold, sem CAPS */
+  .ui-table-th {
+    @apply text-xs font-semibold text-[#475569] normal-case;
+  }
+  .ui-table-tbody {
+    @apply text-xs text-[#0F172A];
+  }
 }

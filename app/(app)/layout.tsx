@@ -1,4 +1,5 @@
 // app/(app)/layout.tsx
+import Image from "next/image"
 import AppHeader from "./AppHeader"
 import SidebarNav from "./SidebarNav"
 
@@ -10,11 +11,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-[#F6F8FC] text-[#0F172A]">
       {/* SIDEBAR */}
-      <aside className="no-print w-64 bg-white border-r hidden md:flex flex-col">
-        <div className="h-14 flex items-center px-6 border-b">
-          <span className="font-semibold text-lg tracking-tight text-slate-800">
+      <aside className="no-print hidden w-64 flex-col border-r border-white/10 bg-[#0B1220] md:flex">
+        <div className="flex h-14 items-center gap-3 border-b border-white/10 px-6">
+          <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#0B1220]">
+            <Image
+              src="/logo3.png"
+              alt=""
+              width={48}
+              height={48}
+              unoptimized
+              className="size-full object-contain"
+            />
+          </div>
+          <span className="text-lg font-semibold tracking-tight text-white/90">
             KPI Compliance
           </span>
         </div>
@@ -23,7 +34,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* CONTENT */}
-      <div className="flex-1 flex flex-col min-w-0 bg-slate-50">
+      <div className="flex min-w-0 flex-1 flex-col bg-[#F6F8FC]">
         <div className="no-print">
           <AppHeader user={user} />
         </div>

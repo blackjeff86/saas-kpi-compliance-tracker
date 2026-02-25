@@ -31,16 +31,16 @@ type Row = {
 
 function riskBadge(v?: string | null) {
   const s = (v || "").toLowerCase()
-  if (s.includes("critical")) return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
-  if (s.includes("high")) return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+  if (s.includes("critical")) return "ui-badge-danger"
+  if (s.includes("high")) return "ui-badge-warning"
   if (s.includes("med") || s.includes("moderate") || s.includes("medium"))
-    return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-  if (s.includes("low")) return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
-  return "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-400"
+    return "ui-badge-warning"
+  if (s.includes("low")) return "ui-badge-success"
+  return "ui-badge-neutral"
 }
 
 function frameworkPill() {
-  return "bg-primary/10 text-primary"
+  return "ui-badge-info"
 }
 
 function resultLabel(v?: string | null) {
@@ -58,29 +58,28 @@ function resultBadge(v?: string | null) {
   const s = (v || "").toLowerCase()
 
   // 🔴 Critical (has red)
-  if (s === "critical") return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+  if (s === "critical") return "ui-badge-danger"
 
   // 🟡 Warning (has yellow and no red)
-  if (s === "warning") return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+  if (s === "warning") return "ui-badge-warning"
 
   // 🟠 Overdue (missing and month already passed)
-  if (s === "overdue") return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300"
+  if (s === "overdue") return "ui-badge-warning"
 
   // ⚪ Pending (waiting for execution)
-  if (s === "pending") return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+  if (s === "pending") return "ui-badge-neutral"
 
   // 🟢 Effective (all applicable KPIs are green)
-  if (s === "effective") return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
+  if (s === "effective") return "ui-badge-success"
 
   // 🚫 Not applicable (outside frequency cycle)
-  if (s === "not_applicable" || s === "not-applicable")
-    return "bg-slate-50 text-slate-500 border border-slate-200 dark:bg-slate-900/40 dark:text-slate-400 dark:border-slate-800"
+  if (s === "not_applicable" || s === "not-applicable") return "ui-badge-neutral"
 
-  return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+  return "ui-badge-neutral"
 }
 
 function Dot({ kind }: { kind: "red" | "yellow" | "green" }) {
-  const cls = kind === "red" ? "bg-red-500" : kind === "yellow" ? "bg-yellow-500" : "bg-emerald-500"
+  const cls = kind === "red" ? "bg-risk-critical" : kind === "yellow" ? "bg-risk-medium" : "bg-risk-low"
   return <span className={`inline-block w-1.5 h-1.5 rounded-full ${cls}`} />
 }
 
@@ -96,35 +95,19 @@ export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?
     <div className="overflow-x-auto">
       <table className="w-full text-left border-collapse">
         <thead>
-          <tr className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
-            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Código
-            </th>
-            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Nome
-            </th>
-            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Framework
-            </th>
-            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Frequência
-            </th>
-            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Control Owner
-            </th>
-            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Focal Point
-            </th>
-            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Result (month)
-            </th>
-            <th className="px-4 py-3 text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-              Risco
-            </th>
+          <tr className="bg-[#F2F6FF] border-b border-slate-200 dark:border-slate-800">
+            <th className="ui-table-th px-4 py-3">Código</th>
+            <th className="ui-table-th px-4 py-3">Nome</th>
+            <th className="ui-table-th px-4 py-3">Framework</th>
+            <th className="ui-table-th px-4 py-3">Frequência</th>
+            <th className="ui-table-th px-4 py-3">Responsável controle</th>
+            <th className="ui-table-th px-4 py-3">Ponto focal</th>
+            <th className="ui-table-th px-4 py-3">Resultado (mês)</th>
+            <th className="ui-table-th px-4 py-3">Risco</th>
           </tr>
         </thead>
 
-        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+        <tbody className="ui-table-tbody divide-y divide-slate-100 dark:divide-slate-800">
           {rows.map((r) => (
             <tr
               key={r.id}
@@ -139,9 +122,9 @@ export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?
             >
               <td className="px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <div className="mt-1 h-8 w-1 rounded-full bg-transparent group-hover:bg-primary/60 transition-colors" />
+                  <div className="mt-1 h-8 w-1 rounded-full bg-transparent group-hover:bg-[#06B6D4]/60 transition-colors" />
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                    <div className="font-semibold text-slate-900 dark:text-white">
                       <span className="font-mono text-slate-500 dark:text-slate-400">{r.control_code}</span>
                     </div>
                     <div className="text-[11px] text-slate-500 dark:text-slate-400">{r.created_at ?? "—"}</div>
@@ -150,7 +133,7 @@ export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?
               </td>
 
               <td className="px-4 py-3 min-w-0">
-                <div className="text-sm font-semibold text-slate-900 dark:text-white truncate max-w-[200px]">
+                <div className="font-semibold text-slate-900 dark:text-white truncate max-w-[200px]">
                   {r.name}
                 </div>
               </td>
@@ -161,17 +144,17 @@ export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?
                     {r.framework}
                   </span>
                 ) : (
-                  <span className="text-sm text-slate-500">—</span>
+                  <span className="text-slate-500">—</span>
                 )}
               </td>
 
-              <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200">{r.frequency ?? "—"}</td>
+              <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{r.frequency ?? "—"}</td>
 
-              <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200">
+              <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                 {r.control_owner_name || r.control_owner_email || "—"}
               </td>
 
-              <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-200">
+              <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                 {r.focal_point_name || r.focal_point_email || "—"}
               </td>
 

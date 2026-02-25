@@ -94,6 +94,28 @@ export default function NewRiskClient({ sources, naturezas }: Props) {
             <option value="critical">Critical</option>
           </select>
         </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Impacto (1–5)
+          </label>
+          <select name="impact" className={baseField} defaultValue="1">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Probabilidade (1–5)
+          </label>
+          <select name="likelihood" className={baseField} defaultValue="1">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="flex justify-end gap-3">

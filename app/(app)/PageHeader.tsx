@@ -15,17 +15,17 @@ export default function PageHeader({
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
         {eyebrow ? (
-          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
             {eyebrow}
           </div>
         ) : null}
 
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+        <h1 className="text-2xl font-bold tracking-tight text-text-primary">
           {title}
         </h1>
 
         {description ? (
-          <div className="mt-1 text-sm text-slate-500">
+          <div className="mt-1 text-sm text-text-secondary">
             {description}
           </div>
         ) : null}

@@ -135,16 +135,53 @@ export async function createActionPlanManual(formData: FormData): Promise<void> 
     }
   }
 
+  // action_plans.risk_id FK referencia risks(id). Se o risco vem só do risk_catalog,
+  // precisamos garantir uma linha em risks antes de inserir o plano.
   if (riskId) {
-    const riskRes = await sql<{ id: string }>`
-      SELECT r.id::text AS id
-      FROM risk_catalog r
-      WHERE r.tenant_id = ${ctx.tenantId}::uuid
-        AND r.id = ${riskId}::uuid
-      LIMIT 1
-    `
-    if (!riskRes.rows[0]?.id) {
+    const [catalogRes, risksRes] = await Promise.all([
+      sql<{ id: string; title: string; description: string | null; classification: string; risk_code: string; impact: number | null; likelihood: number | null }>`
+        SELECT id::text AS id, title::text AS title, description, classification::text AS classification,
+               risk_code::text AS risk_code, impact::int AS impact, likelihood::int AS likelihood
+        FROM risk_catalog
+        WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${riskId}::uuid LIMIT 1
+      `,
+      sql<{ id: string }>`
+        SELECT id::text AS id FROM risks
+        WHERE tenant_id = ${ctx.tenantId}::uuid AND id = ${riskId}::uuid LIMIT 1
+      `,
+    ])
+    const inCatalog = catalogRes.rows[0]
+    const inRisks = risksRes.rows[0]?.id
+
+    if (!inCatalog && !inRisks) {
       throw new Error("Risco inválido para este tenant.")
+    }
+
+    // Se existe só no catálogo, cria linha em risks para satisfazer a FK
+    if (inCatalog && !inRisks) {
+      const imp = inCatalog.impact != null && inCatalog.impact >= 1 && inCatalog.impact <= 5 ? inCatalog.impact : 1
+      const lik = inCatalog.likelihood != null && inCatalog.likelihood >= 1 && inCatalog.likelihood <= 5 ? inCatalog.likelihood : 1
+      const score = imp * lik
+      const cls = (inCatalog.classification || "low").toLowerCase()
+      const validCls = ["low", "med", "high", "critical"].includes(cls) ? cls : "low"
+      await sql`
+        INSERT INTO risks (tenant_id, id, title, description, domain, classification, impact, likelihood, risk_score, status, created_at, updated_at)
+        VALUES (
+          ${ctx.tenantId}::uuid,
+          ${riskId}::uuid,
+          ${inCatalog.title || ""},
+          ${inCatalog.description},
+          ${inCatalog.risk_code || "catalog"},
+          ${validCls}::risk_classification,
+          ${imp},
+          ${lik},
+          ${score},
+          'open'::risk_status,
+          now(),
+          now()
+        )
+        ON CONFLICT (id) DO NOTHING
+      `
     }
   }
 
@@ -191,4 +228,7 @@ export async function createActionPlanManual(formData: FormData): Promise<void> 
   `
 
   revalidatePath("/action-plans")
+  if (riskId) {
+    revalidatePath(`/risks/${riskId}`)
+  }
 }

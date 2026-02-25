@@ -379,7 +379,7 @@ export default async function ActionPlanDetailPage({
                       <div>
                         Risco:{" "}
                         <Link href={`/risks/${plan.risk_id}`} className="font-semibold text-primary hover:underline">
-                          {plan.risk_title ?? plan.risk_id}
+                          {plan.risk_title ?? "Ver risco"}
                         </Link>
                       </div>
                     ) : null}
@@ -410,7 +410,7 @@ export default async function ActionPlanDetailPage({
                   </p>
                 ) : plan.risk_id ? (
                   <p>
-                    Este plano foi registrado no risco <b>{plan.risk_title ?? plan.risk_id ?? "—"}</b>.
+                    Este plano foi registrado no risco <b>{plan.risk_title ?? "—"}</b>.
                   </p>
                 ) : (
                   <p>A origem deste plano não foi identificada.</p>
