@@ -7,10 +7,13 @@ import {
   ShieldCheck,
   BarChart3,
   ClipboardList,
+  LogOut,
   Users,
   FileText,
   ListTodo,
   AlertTriangle,
+  ClipboardCheck,
+  Settings,
 } from "lucide-react"
 
 type NavItem = {
@@ -35,6 +38,7 @@ const SECTIONS: NavSection[] = [
       { href: "/execucoes", label: "Execuções", Icon: ClipboardList },
       { href: "/revisoes", label: "Revisões GRC", Icon: ShieldCheck },
       { href: "/action-plans", label: "Planos de Ação", Icon: ListTodo },
+      { href: "/auditorias", label: "Auditorias", Icon: ClipboardCheck },
     ],
   },
   {
@@ -47,9 +51,14 @@ const SECTIONS: NavSection[] = [
   },
   {
     title: "Admin",
-    items: [{ href: "/usuarios", label: "Usuários", Icon: Users }],
+    items: [
+      { href: "/usuarios", label: "Usuários", Icon: Users },
+      { href: "/configuracoes", label: "Configurações", Icon: Settings },
+    ],
   },
 ]
+
+const UNFINISHED_ROUTES = new Set(["/dashboard", "/execucoes", "/revisoes", "/usuarios"])
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/dashboard") return pathname === "/dashboard"
@@ -60,43 +69,60 @@ export default function SidebarNav() {
   const pathname = usePathname() || "/"
 
   return (
-    <nav className="flex-1 space-y-5 px-3 py-4 text-sm">
-      {SECTIONS.map((sec) => (
-        <div key={sec.title}>
-          <div className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-white/60">
-            {sec.title}
+    <nav className="flex h-full flex-col px-3 py-4 text-sm">
+      <div className="space-y-5">
+        {SECTIONS.map((sec) => (
+          <div key={sec.title}>
+            <div className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-white/60">
+              {sec.title}
+            </div>
+
+            <div className="space-y-1">
+              {sec.items.map(({ href, label, Icon }) => {
+                const active = isActivePath(pathname, href)
+                const isUnfinished = UNFINISHED_ROUTES.has(href)
+
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={[
+                      "relative flex items-center gap-3 rounded-lg px-3 py-2 transition-colors",
+                      active
+                        ? "bg-[#06B6D4] text-white font-semibold"
+                        : "text-white/80 hover:bg-white/5",
+                    ].join(" ")}
+                  >
+                    {active ? (
+                      <span className="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-[#06B6D4]" />
+                    ) : null}
+
+                    <Icon
+                      size={18}
+                      className={active ? "text-white" : "text-white/70"}
+                    />
+                    <span className="truncate">
+                      {label}
+                      {isUnfinished ? <span className="ml-1 text-red-500">*</span> : null}
+                    </span>
+                  </Link>
+                )
+              })}
+            </div>
           </div>
+        ))}
+      </div>
 
-          <div className="space-y-1">
-            {sec.items.map(({ href, label, Icon }) => {
-              const active = isActivePath(pathname, href)
-
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={[
-                    "relative flex items-center gap-3 rounded-lg px-3 py-2 transition-colors",
-                    active
-                      ? "bg-[#06B6D4] text-white font-semibold"
-                      : "text-white/80 hover:bg-white/5",
-                  ].join(" ")}
-                >
-                  {active ? (
-                    <span className="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-[#06B6D4]" />
-                  ) : null}
-
-                  <Icon
-                    size={18}
-                    className={active ? "text-white" : "text-white/70"}
-                  />
-                  <span className="truncate">{label}</span>
-                </Link>
-              )
-            })}
-          </div>
-        </div>
-      ))}
+      <div className="mt-auto pt-4">
+        <Link
+          href="/api/dev/logout"
+          className="relative flex items-center gap-3 rounded-lg px-3 py-2 text-white/80 transition-colors hover:bg-white/5 hover:text-white"
+          title="Sair"
+        >
+          <LogOut size={18} className="text-white/70" />
+          <span className="truncate">Sair</span>
+        </Link>
+      </div>
     </nav>
   )
 }

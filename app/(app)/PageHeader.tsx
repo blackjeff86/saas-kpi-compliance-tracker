@@ -8,11 +8,13 @@ export default function PageHeader({
   description,
   right,
   eyebrow,
+  badge,
 }: {
   title: string
   description?: React.ReactNode
   right?: React.ReactNode
   eyebrow?: React.ReactNode
+  badge?: React.ReactNode
 }) {
   const { setTitle } = usePageTitle()
 
@@ -30,8 +32,9 @@ export default function PageHeader({
           </div>
         ) : null}
 
-        <h1 className="text-2xl font-bold tracking-tight text-text-primary">
+        <h1 className="text-2xl font-bold tracking-tight text-text-primary flex flex-wrap items-center gap-3">
           {title}
+          {badge ? <span className="shrink-0">{badge}</span> : null}
         </h1>
 
         {description ? (

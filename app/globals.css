@@ -329,9 +329,10 @@
 
   /* Tabelas: cabeçalho 12px (text-xs), destaque por font-semibold, sem CAPS */
   .ui-table-th {
-    @apply text-xs font-semibold text-[#475569] normal-case;
+    @apply text-xs font-semibold text-[#475569] normal-case text-center;
   }
   .ui-table-tbody {
     @apply text-xs text-[#0F172A];
   }
 }
+

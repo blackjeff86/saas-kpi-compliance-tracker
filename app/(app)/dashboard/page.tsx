@@ -1,5 +1,6 @@
 // app/(app)/dashboard/page.tsx
 import Link from "next/link"
+import { formatDatePtBr } from "@/lib/utils"
 import PageContainer from "../PageContainer"
 import SetPageTitle from "../components/SetPageTitle"
 import { fetchDashboardSummary } from "./actions"
@@ -226,7 +227,7 @@ export default async function Page({
                   <th className="ui-table-th px-4 py-3">Nome do controle</th>
                   <th className="ui-table-th px-4 py-3">Responsável</th>
                   <th className="ui-table-th px-4 py-3">Status</th>
-                  <th className="ui-table-th px-4 py-3 text-right">Ações</th>
+                  <th className="ui-table-th px-4 py-3 text-center">Ações</th>
                 </tr>
               </thead>
 
@@ -343,7 +344,7 @@ export default async function Page({
           ) : (
             <div className="divide-y divide-[#E6ECF5]">
               {data.action_plans_due_soon.map((p) => (
-                <div key={p.id} className="p-4 flex items-center justify-between gap-4">
+                <div key={p.id} className="p-4 flex items-center justify-between gap-4 text-xs">
                   <div className="min-w-0">
                     <div className="font-medium truncate text-[#0F172A]">{p.title}</div>
                     <div className="text-xs text-[#475569]">
@@ -360,7 +361,7 @@ export default async function Page({
                   <div className="flex items-center gap-2 shrink-0">
                     <span className={badgeClass(p.priority)}>{p.priority}</span>
                     <span className={badgeClass(p.status)}>{p.status}</span>
-                    <span className="text-xs text-[#475569]">{p.due_date}</span>
+                    <span className="text-xs text-[#475569]">{formatDatePtBr(p.due_date)}</span>
                   </div>
                 </div>
               ))}
@@ -381,14 +382,14 @@ export default async function Page({
           ) : (
             <div className="divide-y divide-[#E6ECF5]">
               {data.recent_executions.map((e) => (
-                <Link key={e.id} href={`/execucoes/${e.id}`} className="block p-4 transition-colors hover:bg-[rgba(6,182,212,0.08)]">
+                <Link key={e.id} href={`/execucoes/${e.id}`} className="block p-4 transition-colors hover:bg-[rgba(6,182,212,0.08)] text-xs">
                   <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0">
                       <div className="font-medium truncate text-[#0F172A]">
                         {e.control_code} • {e.kpi_code}
                       </div>
-                      <div className="text-xs text-[#475569]">
-                        {e.period_start} → {e.period_end} • {e.created_at}
+                      <div className="text-[#475569]">
+                        {formatDatePtBr(e.period_start)} → {formatDatePtBr(e.period_end)} • {formatDatePtBr(e.created_at)}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -405,3 +406,5 @@ export default async function Page({
     </PageContainer>
   )
 }
+
+

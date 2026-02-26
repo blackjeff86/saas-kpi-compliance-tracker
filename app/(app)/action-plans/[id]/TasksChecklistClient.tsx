@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { CheckCircle2, Circle, PlusCircle, Trash2, Folder, ExternalLink, X } from "lucide-react"
+import { formatDatePtBr } from "@/lib/utils"
 import {
   addActionPlanTask,
   deleteActionPlanTask,
@@ -17,15 +18,10 @@ type TasksChecklistClientProps = {
   evidenceFolderUrl: string | null
 }
 
-function formatDate(v?: string | null) {
+function formatTaskDueDate(v?: string | null) {
   if (!v) return "Sem prazo"
-  const d = new Date(v)
-  if (Number.isNaN(d.getTime())) return "Sem prazo"
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(d)
+  const formatted = formatDatePtBr(v)
+  return formatted === "—" ? "Sem prazo" : formatted
 }
 
 function priorityLabel(value?: string | null) {
@@ -121,7 +117,7 @@ export default function TasksChecklistClient({
                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                       <span>{task.is_done ? "Concluída" : "Pendente"}</span>
                       <span>•</span>
-                      <span>{formatDate(task.due_date)}</span>
+                      <span>{formatTaskDueDate(task.due_date)}</span>
                       <span>•</span>
                       <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-semibold ${priorityBadgeClass(task.priority)}`}>
                         {priorityLabel(task.priority)}

@@ -1,10 +1,11 @@
 // app/(app)/dashboard/print/page.tsx
+import { formatDatePtBr } from "@/lib/utils"
 import { fetchDashboardSummary } from "../actions"
 
 export default async function DashboardPrintPage() {
   const data = await fetchDashboardSummary()
 
-  const today = new Date().toLocaleDateString("pt-BR")
+  const today = formatDatePtBr(new Date().toISOString())
 
   return (
     <div className="max-w-[800px] mx-auto p-8 text-sm text-slate-800">
@@ -62,8 +63,8 @@ export default async function DashboardPrintPage() {
         <table className="w-full border text-xs">
           <thead>
             <tr className="bg-[#F2F6FF]">
-              <th className="ui-table-th px-3 py-2 text-left">Mês</th>
-              <th className="ui-table-th px-3 py-2 text-left">% na meta</th>
+              <th className="ui-table-th px-3 py-2 text-center">Mês</th>
+              <th className="ui-table-th px-3 py-2 text-center">% na meta</th>
             </tr>
           </thead>
           <tbody>
@@ -86,10 +87,10 @@ export default async function DashboardPrintPage() {
         <table className="w-full border text-xs">
           <thead>
             <tr className="bg-[#F2F6FF]">
-              <th className="ui-table-th px-3 py-2 text-left">Código</th>
-              <th className="ui-table-th px-3 py-2 text-left">Nome</th>
-              <th className="ui-table-th px-3 py-2 text-left">Responsável</th>
-              <th className="ui-table-th px-3 py-2 text-left">Status</th>
+              <th className="ui-table-th px-3 py-2 text-center">Código</th>
+              <th className="ui-table-th px-3 py-2 text-center">Nome</th>
+              <th className="ui-table-th px-3 py-2 text-center">Responsável</th>
+              <th className="ui-table-th px-3 py-2 text-center">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -122,10 +123,10 @@ export default async function DashboardPrintPage() {
         <table className="w-full border text-xs">
           <thead>
             <tr className="bg-[#F2F6FF]">
-              <th className="ui-table-th px-3 py-2 text-left">Título</th>
-              <th className="ui-table-th px-3 py-2 text-left">Prioridade</th>
-              <th className="ui-table-th px-3 py-2 text-left">Status</th>
-              <th className="ui-table-th px-3 py-2 text-left">Vencimento</th>
+              <th className="ui-table-th px-3 py-2 text-center">Título</th>
+              <th className="ui-table-th px-3 py-2 text-center">Prioridade</th>
+              <th className="ui-table-th px-3 py-2 text-center">Status</th>
+              <th className="ui-table-th px-3 py-2 text-center">Vencimento</th>
             </tr>
           </thead>
           <tbody>
@@ -141,7 +142,7 @@ export default async function DashboardPrintPage() {
                   <td className="px-3 py-2">{p.title}</td>
                   <td className="px-3 py-2">{p.priority}</td>
                   <td className="px-3 py-2">{p.status}</td>
-                  <td className="px-3 py-2">{p.due_date}</td>
+                  <td className="px-3 py-2">{formatDatePtBr(p.due_date)}</td>
                 </tr>
               ))
             )}
@@ -156,3 +157,4 @@ export default async function DashboardPrintPage() {
     </div>
   )
 }
+

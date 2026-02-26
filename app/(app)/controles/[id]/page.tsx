@@ -1,6 +1,7 @@
 // app/(app)/controles/[id]/page.tsx
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { formatDatePtBr } from "@/lib/utils"
 import PageContainer from "../../PageContainer"
 import PageHeader from "../../PageHeader"
 import { fetchControlById, fetchActionPlansForControlByMonth } from "./actions"
@@ -266,7 +267,8 @@ export default async function ControleDetailPage({
 
               <Link
                 href={`/controles/${control.id}/editar`}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-slate-200 bg-white text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition-colors text-sm"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition-colors text-sm"
+                title="Editar Controle"
               >
                 <Pencil className="w-4 h-4" />
                 Editar
@@ -511,11 +513,11 @@ export default async function ControleDetailPage({
                               <td className="px-4 py-3 text-slate-700">{ap.status ?? "—"}</td>
 
                               <td className="px-4 py-3 text-slate-700">
-                                {ap.due_date ? new Date(ap.due_date).toLocaleDateString("pt-BR") : "—"}
+                                {formatDatePtBr(ap.due_date)}
                               </td>
 
                               <td className="px-4 py-3 text-slate-500">
-                                {ap.updated_at ? new Date(ap.updated_at).toLocaleString("pt-BR") : "—"}
+                                {formatDatePtBr(ap.updated_at)}
                               </td>
                             </tr>
                           ))}
@@ -564,7 +566,7 @@ export default async function ControleDetailPage({
                                 <span className="text-[10px] text-slate-400">•</span>
 
                                 <span className="text-xs text-slate-400">
-                                  {new Date(h.created_at).toLocaleString("pt-BR")}
+                                  {formatDatePtBr(h.created_at)}
                                 </span>
 
                                 <span className="text-[10px] text-slate-300">•</span>
@@ -675,7 +677,7 @@ export default async function ControleDetailPage({
 
             <div className="text-xs text-slate-400 flex items-center gap-2">
               <FileText className="w-3.5 h-3.5" />
-              Criado em: <span className="text-slate-500">{control.created_at}</span>
+              Criado em: <span className="text-slate-500">{formatDatePtBr(control.created_at)}</span>
             </div>
           </div>
         </div>

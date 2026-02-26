@@ -437,6 +437,19 @@ export type KpiHistoryRow = {
   created_at: string | null
 }
 
+export type ActionPlanForKpiRow = {
+  id: string
+  title: string
+  description: string | null
+  responsible_name: string | null
+  priority: string | null
+  status: string | null
+  due_date: string | null
+  updated_at: string
+  execution_id: string | null
+  mes_ref: string | null
+}
+
 /**
  * ✅ Busca dados do KPI + execução do mês + histórico (últimas 5)
  */
@@ -612,7 +625,42 @@ export async function fetchKpiExecutionPage(kpiId: string, mes_ref: string) {
     created_at: h.created_at ?? null,
   }))
 
-  return { kpi, execution, history, mes_ref_used: mes_ref }
+  // 4) Planos de ação vinculados ao KPI
+  const apRes = await sql<ActionPlanForKpiRow & { mes_ref: string | null }>`
+    SELECT
+      ap.id::text AS id,
+      ap.title::text AS title,
+      ap.description::text AS description,
+      ap.responsible_name::text AS responsible_name,
+      ap.priority::text AS priority,
+      ap.status::text AS status,
+      ap.due_date::text AS due_date,
+      ap.updated_at::text AS updated_at,
+      ap.execution_id::text AS execution_id,
+      CASE WHEN e.period_start IS NOT NULL
+        THEN to_char(date_trunc('month', e.period_start), 'YYYY-MM')::text
+        ELSE NULL
+      END AS mes_ref
+    FROM action_plans ap
+    LEFT JOIN kpi_executions e ON e.id = ap.execution_id AND e.tenant_id = ap.tenant_id
+    WHERE ap.tenant_id = ${tenantId}
+      AND ap.kpi_id = ${kpiId}
+    ORDER BY ap.created_at DESC
+  `
+  const actionPlans: ActionPlanForKpiRow[] = (apRes.rows ?? []).map((ap) => ({
+    id: String(ap.id),
+    title: String(ap.title ?? ""),
+    description: ap.description ?? null,
+    responsible_name: ap.responsible_name ?? null,
+    priority: ap.priority ?? null,
+    status: ap.status ?? null,
+    due_date: ap.due_date ?? null,
+    updated_at: String(ap.updated_at ?? ""),
+    execution_id: ap.execution_id ?? null,
+    mes_ref: ap.mes_ref ?? null,
+  }))
+
+  return { kpi, execution, history, actionPlans, mes_ref_used: mes_ref }
 }
 
 /**

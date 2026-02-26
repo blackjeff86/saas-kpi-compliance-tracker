@@ -1,6 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
+import { formatDatePtBr } from "@/lib/utils"
 
 type Row = {
   id: string
@@ -136,9 +137,6 @@ export default function KpisTable({
                           {r.kpi_code}
                         </span>
                       </div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                        {r.created_at}
-                      </div>
                     </div>
                   </div>
                 </td>
@@ -146,10 +144,9 @@ export default function KpisTable({
                   <div className="font-semibold text-slate-900 dark:text-white truncate max-w-[200px]">
                     {r.kpi_name}
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                    operator: {r.target_operator ?? "—"} • value: {r.target_value ?? "—"}
-                    {!isActive ? " • inativo" : ""}
-                  </div>
+                  {!isActive ? (
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">inativo</div>
+                  ) : null}
                 </td>
                 <td className="px-4 py-3">
                   {r.framework ? (
@@ -193,7 +190,7 @@ export default function KpisTable({
                   )}
                 </td>
                 <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
-                  {r.next_execution_date ?? "—"}
+                  {formatDatePtBr(r.next_execution_date)}
                 </td>
               </tr>
             )

@@ -25,6 +25,16 @@ function riskBadge(v?: string | null) {
   return "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-400"
 }
 
+function statusLabel(s?: string | null) {
+  const v = (s || "").toLowerCase()
+  if (v === "open" || v === "aberto") return "Em aberto"
+  if (v === "mitigating" || v === "em mitigação") return "Em mitigação"
+  if (v === "accepted" || v === "aceito") return "Aceito"
+  if (v === "closed" || v === "fechado") return "Fechado"
+  if (v === "catalogado") return "Catalogado"
+  return s || "—"
+}
+
 function statusBadge(v?: string | null) {
   const s = (v || "").toLowerCase()
   if (s === "aberto" || s === "open") return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
@@ -124,7 +134,7 @@ export default function RisksTable({ rows, returnTo }: { rows: Row[]; returnTo?:
                   )}`}
                 >
                   <span className="w-1 h-1 rounded-full bg-current opacity-60 mr-1.5" />
-                  {r.status || "—"}
+                  {statusLabel(r.status)}
                 </span>
               </td>
             </tr>

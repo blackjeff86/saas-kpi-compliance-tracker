@@ -14,7 +14,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-[#F6F8FC] text-[#0F172A]">
       {/* SIDEBAR */}
-      <aside className="no-print hidden w-64 flex-col border-r border-white/10 bg-[#0B1220] md:flex">
+      <aside className="no-print hidden w-64 flex-col border-r border-white/10 bg-[#0B1220] md:fixed md:inset-y-0 md:left-0 md:flex md:h-screen md:overflow-hidden">
         <div className="flex h-14 items-center gap-3 border-b border-white/10 px-6">
           <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#0B1220]">
             <Image
@@ -35,7 +35,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* CONTENT */}
-      <div className="flex min-w-0 flex-1 flex-col bg-[#F6F8FC]">
+      <div className="flex min-w-0 flex-1 flex-col bg-[#F6F8FC] md:ml-64">
         <PageTitleProvider>
           <div className="no-print">
             <AppHeader user={user} />

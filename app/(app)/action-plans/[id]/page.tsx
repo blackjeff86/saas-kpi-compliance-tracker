@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
+import { formatDatePtBr } from "@/lib/utils"
 import PageContainer from "../../PageContainer"
 import TasksChecklistClient from "./TasksChecklistClient"
 import ActionPlanActionsButtonClient from "./ActionPlanActionsButtonClient"
@@ -24,30 +25,7 @@ import {
   Sparkles,
 } from "lucide-react"
 
-function formatDate(v?: string | null) {
-  if (!v) return "—"
-  const d = new Date(v)
-  if (Number.isNaN(d.getTime())) return "—"
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(d)
-}
-
-function formatDateTime(v?: string | null) {
-  if (!v) return "—"
-  const d = new Date(v)
-  if (Number.isNaN(d.getTime())) return "—"
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d)
-}
+const formatDate = formatDatePtBr
 
 function parseEventMessage(metadata?: string | null) {
   if (!metadata) return "Plano atualizado."
@@ -436,7 +414,7 @@ export default async function ActionPlanDetailPage({
                       <div>
                         <div className="font-semibold text-slate-800">{event.title}</div>
                         <div className="text-slate-600">{event.description}</div>
-                        <div className="text-xs text-slate-400">{formatDateTime(event.at)}</div>
+                        <div className="text-xs text-slate-400">{formatDate(event.at)}</div>
                       </div>
                     </div>
                   ))

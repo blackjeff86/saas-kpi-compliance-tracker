@@ -706,7 +706,7 @@ export default function ImportControlsClient() {
                 <th className="ui-table-th px-6 py-3">Framework</th>
                 <th className="ui-table-th px-6 py-3">Responsável / ponto focal</th>
                 <th className="ui-table-th px-6 py-3">KPI</th>
-                <th className="ui-table-th px-6 py-3 text-right">Validação</th>
+                <th className="ui-table-th px-6 py-3 text-center">Validação</th>
               </tr>
             </thead>
 
@@ -786,3 +786,5 @@ export default function ImportControlsClient() {
     </div>
   )
 }
+
+

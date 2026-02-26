@@ -76,9 +76,11 @@ export type ActionPlanTimelineEvent = {
   created_at: string
 }
 
+let _actionPlanEvidenceColumnEnsured = false
 async function ensureActionPlanEvidenceColumn() {
-  // ✅ garante a coluna no action_plans sem depender de migration manual
+  if (_actionPlanEvidenceColumnEnsured) return
   await sql`ALTER TABLE action_plans ADD COLUMN IF NOT EXISTS evidence_folder_url text NULL`
+  _actionPlanEvidenceColumnEnsured = true
 }
 
 async function fetchEnumValues(enumName: string): Promise<string[]> {
@@ -92,7 +94,9 @@ async function fetchEnumValues(enumName: string): Promise<string[]> {
   return rows.map((r) => r.value)
 }
 
+let _actionPlanTasksTableEnsured = false
 async function ensureActionPlanTasksTable() {
+  if (_actionPlanTasksTableEnsured) return
   await sql`
     CREATE TABLE IF NOT EXISTS action_plan_tasks (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -117,9 +121,12 @@ async function ensureActionPlanTasksTable() {
     CREATE INDEX IF NOT EXISTS idx_action_plan_tasks_tenant_plan
       ON action_plan_tasks(tenant_id, action_plan_id)
   `
+  _actionPlanTasksTableEnsured = true
 }
 
+let _actionPlanEventsTableEnsured = false
 async function ensureActionPlanEventsTable() {
+  if (_actionPlanEventsTableEnsured) return
   await sql`
     CREATE TABLE IF NOT EXISTS action_plan_events (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -136,6 +143,7 @@ async function ensureActionPlanEventsTable() {
     CREATE INDEX IF NOT EXISTS idx_action_plan_events_tenant_plan_created
       ON action_plan_events(tenant_id, action_plan_id, created_at DESC)
   `
+  _actionPlanEventsTableEnsured = true
 }
 
 async function logActionPlanEvent(input: {

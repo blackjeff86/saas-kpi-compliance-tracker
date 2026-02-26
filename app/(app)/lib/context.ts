@@ -1,5 +1,6 @@
 "use server"
 
+import { cache } from "react"
 import { cookies } from "next/headers"
 import { sql } from "@vercel/postgres"
 
@@ -56,8 +57,9 @@ async function ensureUser(opts: { tenantId: string; email: string }): Promise<{ 
  * - pega tenant/email via cookie
  * - fallback: primeiro tenant + admin@demo.com
  * - garante que o user exista (cria se faltar)
+ * cache() deduplica chamadas na mesma requisição.
  */
-export async function getContext(): Promise<AppContext> {
+export const getContext = cache(async (): Promise<AppContext> => {
   const ck = await cookies()
   const cookieTenant = ck.get(COOKIE_TENANT)?.value
   const cookieEmail = ck.get(COOKIE_EMAIL)?.value
@@ -73,4 +75,4 @@ export async function getContext(): Promise<AppContext> {
     userEmail,
     userRole: u.role,
   }
-}
+})

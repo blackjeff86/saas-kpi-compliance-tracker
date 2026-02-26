@@ -45,7 +45,7 @@ export default async function KpiDetailPage({
     throw err
   }
 
-  const { kpi, execution, history, mes_ref_used } = data
+  const { kpi, execution, history, actionPlans, mes_ref_used } = data
 
   const backHref =
     from === "controle"
@@ -79,7 +79,7 @@ export default async function KpiDetailPage({
           }
         />
 
-        <KpiExecutionClient kpi={kpi} mes_ref_used={mes_ref_used} execution={execution} history={history} />
+        <KpiExecutionClient kpi={kpi} mes_ref_used={mes_ref_used} execution={execution} history={history} actionPlans={actionPlans} />
       </div>
     </PageContainer>
   )

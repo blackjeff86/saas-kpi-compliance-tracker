@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import {
   AlertCircle,
   CheckCircle2,
+  ClipboardList,
   CloudUpload,
   Download,
   Eye,
@@ -17,7 +18,8 @@ import {
   X,
 } from "lucide-react"
 
-import type { KpiDetail, KpiExecutionForMonth, KpiHistoryRow } from "./actions"
+import { formatDatePtBr } from "@/lib/utils"
+import type { KpiDetail, KpiExecutionForMonth, KpiHistoryRow, ActionPlanForKpiRow } from "./actions"
 import { upsertKpiExecutionForMonth, updateKpiConfig, createActionPlanForKpi } from "./actions"
 
 function safe(v: any) {
@@ -119,9 +121,10 @@ export default function KpiExecutionClient(props: {
   mes_ref_used: string // YYYY-MM
   execution: KpiExecutionForMonth
   history: KpiHistoryRow[]
+  actionPlans: ActionPlanForKpiRow[]
 }) {
   const router = useRouter()
-  const { kpi, mes_ref_used, execution, history } = props
+  const { kpi, mes_ref_used, execution, history, actionPlans } = props
 
   const [isPending, startTransition] = useTransition()
 
@@ -492,12 +495,12 @@ export default function KpiExecutionClient(props: {
               </p>
 
               <div className="text-xs text-slate-400 mt-2 font-mono">
-                {kpi.kpi_code} • Controle:{" "}
+                {kpi.kpi_code} •{" "}
                 <Link
-                  className="hover:text-primary"
+                  className="underline hover:text-primary"
                   href={`/controles/${kpi.control_id}?mes_ref=${encodeURIComponent(mes_ref_used)}`}
                 >
-                  {kpi.control_code}
+                  Controle: {kpi.control_code}
                 </Link>
               </div>
             </div>
@@ -635,6 +638,69 @@ export default function KpiExecutionClient(props: {
                   </div>
                 </div>
               ) : null}
+
+              {/* Planos de ação vinculados ao KPI */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">Planos de Ação Vinculados</label>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/50 overflow-hidden">
+                  {actionPlans.length === 0 ? (
+                    <div className="p-6 text-center text-slate-500 text-sm">
+                      Nenhum plano de ação vinculado a este KPI.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {actionPlans.map((ap) => (
+                        <Link
+                          key={ap.id}
+                          href={`/action-plans/${ap.id}`}
+                          className="flex flex-col md:flex-row md:items-center gap-3 p-4 hover:bg-slate-100/80 transition-colors"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <ClipboardList className="w-4 h-4 text-slate-400 shrink-0" />
+                              <span className="font-medium text-slate-900 truncate">{ap.title}</span>
+                            </div>
+                            {ap.responsible_name ? (
+                              <p className="text-xs text-slate-500 mt-0.5">Responsável: {ap.responsible_name}</p>
+                            ) : null}
+                          </div>
+                          <div className="flex flex-col items-end gap-1.5">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                (ap.status || "").toLowerCase() === "done"
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : (ap.status || "").toLowerCase() === "in_progress"
+                                    ? "bg-amber-100 text-amber-700"
+                                    : (ap.status || "").toLowerCase() === "blocked"
+                                      ? "bg-red-100 text-red-700"
+                                      : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {(ap.status || "").toLowerCase() === "done"
+                                ? "Concluído"
+                                : (ap.status || "").toLowerCase() === "in_progress"
+                                  ? "Em andamento"
+                                  : (ap.status || "").toLowerCase() === "blocked"
+                                    ? "Bloqueado"
+                                    : (ap.status || "").toLowerCase() === "not_started"
+                                      ? "A fazer"
+                                      : ap.status || "—"}
+                            </span>
+                            {ap.priority ? (
+                              <span className="text-xs text-slate-500">Prioridade: {ap.priority}</span>
+                            ) : null}
+                            {ap.due_date ? (
+                              <span className="text-xs text-slate-500">
+                                Prazo: {formatDatePtBr(ap.due_date)}
+                              </span>
+                            ) : null}
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {/* Evidência (placeholder) */}
               <div className="space-y-2">
@@ -1061,7 +1127,7 @@ export default function KpiExecutionClient(props: {
                 <th className="ui-table-th px-6 py-4">Valor</th>
                 <th className="ui-table-th px-6 py-4">Status</th>
                 <th className="ui-table-th px-6 py-4">Data registro</th>
-                <th className="ui-table-th px-6 py-4 text-right">Ações</th>
+                <th className="ui-table-th px-6 py-4 text-center">Ações</th>
               </tr>
             </thead>
 
@@ -1091,7 +1157,7 @@ export default function KpiExecutionClient(props: {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-slate-500">
-                      {h.created_at ? new Date(h.created_at).toLocaleDateString("pt-BR") : "—"}
+                      {h.created_at ? formatDatePtBr(h.created_at) : "—"}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <Link
@@ -1123,3 +1189,5 @@ export default function KpiExecutionClient(props: {
     </div>
   )
 }
+
+

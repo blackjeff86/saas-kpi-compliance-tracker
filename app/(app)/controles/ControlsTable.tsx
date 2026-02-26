@@ -127,7 +127,6 @@ export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?
                     <div className="font-semibold text-slate-900 dark:text-white">
                       <span className="font-mono text-slate-500 dark:text-slate-400">{r.control_code}</span>
                     </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">{r.created_at ?? "—"}</div>
                   </div>
                 </div>
               </td>

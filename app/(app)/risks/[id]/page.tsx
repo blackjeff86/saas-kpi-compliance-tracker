@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { formatDatePtBr } from "@/lib/utils"
 import PageContainer from "../../PageContainer"
 import {
   fetchRiskById,
@@ -177,9 +178,9 @@ export default async function RiskDetailPage(props: {
                     {risk.risk_code ?? risk.domain}
                   </span>
                   <span className="text-slate-300 dark:text-slate-700">•</span>
-                  <span>Atualizado: {risk.updated_at}</span>
+                  <span>Atualizado: {formatDatePtBr(risk.updated_at)}</span>
                   <span className="text-slate-300 dark:text-slate-700">•</span>
-                  <span>Criado: {risk.created_at}</span>
+                  <span>Criado: {formatDatePtBr(risk.created_at)}</span>
                 </div>
 
                 {risk.description ? (
@@ -301,13 +302,13 @@ export default async function RiskDetailPage(props: {
                             {ap.title}
                           </div>
                           <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                            Status: {ap.status} • Priority: {ap.priority} • Due: {ap.due_date ?? "—"} • Owner:{" "}
+                            Status: {ap.status} • Priority: {ap.priority} • Due: {formatDatePtBr(ap.due_date)} • Owner:{" "}
                             {ap.owner_name ?? "—"}
                           </div>
                         </div>
 
                         <div className="text-xs text-slate-500 dark:text-slate-400 shrink-0">
-                          {ap.created_at}
+                          {formatDatePtBr(ap.created_at)}
                         </div>
                       </Link>
                     ))}
@@ -368,7 +369,7 @@ export default async function RiskDetailPage(props: {
                       >
                         <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap">{u.content}</p>
                         <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                          {new Date(u.created_at).toLocaleString("pt-BR")}
+                          {formatDatePtBr(u.created_at)}
                           {u.author_name ? ` • por ${u.author_name}` : null}
                         </div>
                       </div>
@@ -414,7 +415,7 @@ export default async function RiskDetailPage(props: {
                             </span>
                             <span className="text-[10px] text-slate-400">•</span>
                             <span className="text-xs text-slate-400">
-                              {new Date(h.created_at).toLocaleString("pt-BR")}
+                              {formatDatePtBr(h.created_at)}
                             </span>
                           </div>
                         </div>

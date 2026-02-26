@@ -1,3 +1,4 @@
+import { formatDatePtBr } from "@/lib/utils"
 import PageContainer from "../../PageContainer"
 import PageHeader from "../../PageHeader"
 import { fetchExecutionDetail, fetchEvidences } from "../actions-detail"
@@ -69,7 +70,7 @@ export default async function Page({
                   <div className="min-w-0">
                     <div className="font-medium truncate">{ev.title}</div>
                     <div className="text-xs text-slate-500">
-                      {ev.type} • {ev.created_at}
+                      {ev.type} • {formatDatePtBr(ev.created_at)}
                     </div>
                   </div>
 

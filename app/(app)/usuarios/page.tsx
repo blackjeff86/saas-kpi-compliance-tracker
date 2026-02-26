@@ -1,3 +1,4 @@
+import { formatDatePtBr } from "@/lib/utils"
 import PageContainer from "../PageContainer"
 import PageHeader from "../PageHeader"
 import { fetchUsers } from "./actions"
@@ -30,7 +31,7 @@ export default async function UsuariosPage() {
               >
                 <div className="col-span-4">
                   <div className="font-medium">{u.name}</div>
-                  <div className="text-xs text-slate-500">criado em {u.created_at}</div>
+                  <div className="text-xs text-slate-500">criado em {formatDatePtBr(u.created_at)}</div>
                 </div>
                 <div className="col-span-5 text-slate-700">{u.email}</div>
                 <div className="col-span-3">
