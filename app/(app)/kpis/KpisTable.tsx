@@ -13,6 +13,8 @@ type Row = {
   is_active: boolean
   created_at: string
   month_status: string | null
+  month_suggested_status: string | null
+  month_final_status: string | null
   month_result_numeric: number | null
   mes_ref_used: string
   framework: string | null
@@ -38,7 +40,7 @@ function kpiStatusBadge(v?: string | null) {
     s.includes("effective") ||
     s.includes("pass")
   )
-    return "ui-badge-success"
+    return "bg-emerald-50 text-emerald-700 border-emerald-200"
   if (
     s.includes("warning") ||
     s.includes("warn") ||
@@ -47,7 +49,7 @@ function kpiStatusBadge(v?: string | null) {
     s.includes("moderate") ||
     s === "overdue"
   )
-    return "ui-badge-warning"
+    return "bg-amber-50 text-amber-700 border-amber-200"
   if (
     s === "out" ||
     s.includes("out_of_target") ||
@@ -57,10 +59,34 @@ function kpiStatusBadge(v?: string | null) {
     s.includes("red") ||
     s.includes("fail")
   )
-    return "ui-badge-danger"
+    return "bg-red-50 text-red-700 border-red-200"
   if (s === "not_applicable" || s === "not-applicable")
-    return "ui-badge-neutral"
-  return "ui-badge-neutral"
+    return "bg-slate-50 text-slate-700 border-slate-200"
+  return "bg-slate-50 text-slate-700 border-slate-200"
+}
+
+function finalReviewBadge(v?: string | null) {
+  const s = (v || "").toLowerCase()
+  if (s === "approved") return "bg-emerald-50 text-emerald-700 border-emerald-200"
+  if (s === "needs_changes") return "bg-amber-50 text-amber-700 border-amber-200"
+  if (s === "rejected") return "bg-red-50 text-red-700 border-red-200"
+  if (s === "under_review" || s === "submitted" || s === "pending") return "bg-slate-50 text-slate-700 border-slate-200"
+  if (s === "not_applicable" || s === "not-applicable") return "bg-slate-50 text-slate-700 border-slate-200"
+  if (s === "overdue") return "bg-amber-50 text-amber-700 border-amber-200"
+  return "bg-slate-50 text-slate-700 border-slate-200"
+}
+
+function finalReviewLabel(v?: string | null) {
+  const s = (v || "").toLowerCase()
+  if (s === "approved") return "Conforme"
+  if (s === "needs_changes") return "Em observação"
+  if (s === "rejected") return "Crítico"
+  if (s === "under_review") return "Em revisão"
+  if (s === "submitted") return "Aguardando revisão"
+  if (s === "not_applicable" || s === "not-applicable") return "Não aplicável"
+  if (s === "overdue") return "Overdue"
+  if (s === "pending") return "Pendente"
+  return "—"
 }
 
 export default function KpisTable({
@@ -96,6 +122,7 @@ export default function KpisTable({
             <th className="ui-table-th px-4 py-3">Ponto focal</th>
             <th className="ui-table-th px-4 py-3">Meta</th>
             <th className="ui-table-th px-4 py-3">Valor (mês)</th>
+            <th className="ui-table-th px-4 py-3">Resultado sugerido</th>
             <th className="ui-table-th px-4 py-3">Resultado (mês)</th>
             <th className="ui-table-th px-4 py-3">Próxima execução</th>
           </tr>
@@ -104,7 +131,8 @@ export default function KpisTable({
           {rows.map((r) => {
             const isActive = Boolean(r.is_active)
             const targetValue = r.target_value
-            const monthStatus = (r.month_status ?? "") as string
+            const monthStatus = (r.month_suggested_status ?? r.month_status ?? "") as string
+            const monthFinalStatus = (r.month_final_status ?? "") as string
             const monthResult =
               r.month_result_numeric === null || r.month_result_numeric === undefined
                 ? null
@@ -177,13 +205,26 @@ export default function KpisTable({
                 <td className="px-4 py-3">
                   {monthStatus ? (
                     <span
-                      className={`inline-flex w-fit items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${kpiStatusBadge(
+                      className={`inline-flex items-center px-2 py-1 rounded-md border text-xs font-medium ${kpiStatusBadge(
                         monthStatus
                       )}`}
                       title={`auto_status no mês ${r.mes_ref_used ?? mes_ref}`}
                     >
-                      <span className="w-1 h-1 rounded-full bg-current opacity-60 mr-1.5" />
                       {monthStatus}
+                    </span>
+                  ) : (
+                    <span className="text-slate-500">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  {monthFinalStatus ? (
+                    <span
+                      className={`inline-flex items-center px-2 py-1 rounded-md border text-xs font-medium ${finalReviewBadge(
+                        monthFinalStatus
+                      )}`}
+                      title={`Resultado final após revisão GRC no mês ${r.mes_ref_used ?? mes_ref}`}
+                    >
+                      {finalReviewLabel(monthFinalStatus)}
                     </span>
                   ) : (
                     <span className="text-slate-500">—</span>

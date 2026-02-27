@@ -5,7 +5,8 @@ import PageHeader from "../PageHeader"
 import { fetchControlsPage, fetchControlsFilterOptions, fetchControlsSummary } from "./actions"
 import FiltersBar from "./FiltersBar"
 import ControlsTable from "./ControlsTable"
-import { UploadCloud, Plus, ChevronLeft, ChevronRight, ClipboardList, CheckCircle, AlertTriangle, XCircle } from "lucide-react"
+import { UploadCloud, Plus, ClipboardList, CheckCircle, AlertTriangle, XCircle } from "lucide-react"
+import TablePaginationFooter from "../components/TablePaginationFooter"
 
 function clampInt(v: any, def: number, min: number, max: number) {
   const n = Number(v)
@@ -55,6 +56,7 @@ export default async function ControlesPage({
   const focal = (pickFirst(sp.focal) ?? "").trim()
   const frequency = (pickFirst(sp.frequency) ?? "").trim()
   const risk = (pickFirst(sp.risk) ?? "").trim()
+  const resultado = (pickFirst(sp.resultado) ?? "").trim()
   const framework = (pickFirst(sp.framework) ?? "").trim()
 
   const pageSize = 10
@@ -70,6 +72,7 @@ export default async function ControlesPage({
       framework,
       frequency,
       risk,
+      resultado,
       owner,
       focal,
     }),
@@ -79,6 +82,7 @@ export default async function ControlesPage({
       framework,
       frequency,
       risk,
+      resultado,
       owner,
       focal,
     }),
@@ -95,6 +99,7 @@ export default async function ControlesPage({
     focal,
     frequency,
     risk,
+    resultado,
     framework,
   }
 
@@ -191,43 +196,14 @@ export default async function ControlesPage({
             <ControlsTable rows={rows as any} mes_ref={mes_ref} />
           )}
 
-          <div className="px-4 py-3 bg-white dark:bg-background-dark border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="text-sm text-slate-500">
-              Mostrando{" "}
-              <span className="font-semibold text-slate-900 dark:text-white">{from}</span> a{" "}
-              <span className="font-semibold text-slate-900 dark:text-white">{to}</span> de{" "}
-              <span className="font-semibold text-slate-900 dark:text-white">{total}</span> resultados
-            </div>
-
-            <div className="flex items-center gap-2 justify-end">
-              <Link
-                aria-disabled={page <= 1}
-                href={mkHref(Math.max(1, page - 1))}
-                className={`p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-primary hover:border-primary ${
-                  page <= 1 ? "pointer-events-none opacity-50" : ""
-                }`}
-                title="Anterior"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </Link>
-
-              <div className="text-sm text-slate-500">
-                Página <span className="font-semibold text-slate-900 dark:text-white">{page}</span> /{" "}
-                <span className="font-semibold text-slate-900 dark:text-white">{totalPages}</span>
-              </div>
-
-              <Link
-                aria-disabled={page >= totalPages}
-                href={mkHref(Math.min(totalPages, page + 1))}
-                className={`p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-primary hover:border-primary ${
-                  page >= totalPages ? "pointer-events-none opacity-50" : ""
-                }`}
-                title="Próxima"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </Link>
-            </div>
-          </div>
+          <TablePaginationFooter
+            from={from}
+            to={to}
+            total={total}
+            page={page}
+            prevHref={page <= 1 ? null : mkHref(Math.max(1, page - 1))}
+            nextHref={page >= totalPages ? null : mkHref(Math.min(totalPages, page + 1))}
+          />
         </div>
       </div>
     </PageContainer>

@@ -67,7 +67,6 @@ export default async function ActionPlansPage(props: {
 
   // Paginação (UI placeholder)
   const page = 1
-  const perPage = Math.max(total, 1)
   const showingFrom = total === 0 ? 0 : 1
   const showingTo = total
 
@@ -160,7 +159,6 @@ export default async function ActionPlansPage(props: {
         <ActionPlansTable
           rows={rows}
           page={page}
-          perPage={perPage}
           total={total}
           showingFrom={showingFrom}
           showingTo={showingTo}

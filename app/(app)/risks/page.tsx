@@ -12,7 +12,8 @@ import { DEFAULT_SOURCES, DEFAULT_NATUREZAS } from "./constants"
 import FiltersBar from "./FiltersBar"
 import RisksTable from "./RisksTable"
 import NewRiskModal from "./NewRiskModal"
-import { Download, ChevronLeft, ChevronRight } from "lucide-react"
+import { Download } from "lucide-react"
+import TablePaginationFooter from "../components/TablePaginationFooter"
 
 function pickFirst(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v
@@ -317,46 +318,14 @@ WHERE tenant_id = '${heatmap.tenantId}'::uuid
             <RisksTable rows={rows} returnTo={`/risks?${new URLSearchParams(baseParams).toString()}`} />
           )}
 
-           <div className="flex flex-col gap-3 border-t border-border bg-background px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-             <div className="text-sm text-text-secondary">
-               Mostrando <span className="font-semibold text-text-primary">{from}</span> a{" "}
-               <span className="font-semibold text-text-primary">{to}</span> de{" "}
-               <span className="font-semibold text-text-primary">{total}</span> resultados
-            </div>
-
-            <div className="flex items-center gap-2 justify-end">
-              <Link
-                aria-disabled={page <= 1}
-                href={mkHref(Math.max(1, page - 1))}
-                 className={`rounded border border-border p-1 text-text-secondary hover:border-primary hover:text-primary ${
-                  page <= 1 ? "pointer-events-none opacity-50" : ""
-                }`}
-                title="Anterior"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </Link>
-
-              <div className="flex items-center gap-2 text-sm">
-                 <span className="text-text-muted">Página</span>
-                 <span className="flex h-8 w-8 items-center justify-center rounded bg-primary text-sm font-semibold text-white">
-                  {page}
-                </span>
-                 <span className="text-text-muted">/</span>
-                 <span className="font-semibold text-text-muted">{totalPages}</span>
-              </div>
-
-              <Link
-                aria-disabled={page >= totalPages}
-                href={mkHref(Math.min(totalPages, page + 1))}
-                 className={`rounded border border-border p-1 text-text-secondary hover:border-primary hover:text-primary ${
-                  page >= totalPages ? "pointer-events-none opacity-50" : ""
-                }`}
-                title="Próxima"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </Link>
-            </div>
-          </div>
+          <TablePaginationFooter
+            from={from}
+            to={to}
+            total={total}
+            page={page}
+            prevHref={page <= 1 ? null : mkHref(Math.max(1, page - 1))}
+            nextHref={page >= totalPages ? null : mkHref(Math.min(totalPages, page + 1))}
+          />
         </div>
       </div>
     </PageContainer>

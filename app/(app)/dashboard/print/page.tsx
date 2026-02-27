@@ -63,11 +63,11 @@ export default async function DashboardPrintPage() {
         <table className="w-full border text-xs">
           <thead>
             <tr className="bg-[#F2F6FF]">
-              <th className="ui-table-th px-3 py-2 text-center">Mês</th>
-              <th className="ui-table-th px-3 py-2 text-center">% na meta</th>
+              <th className="ui-table-th px-3 py-2 text-left">Mês</th>
+              <th className="ui-table-th px-3 py-2 text-left">% na meta</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="ui-table-tbody">
             {data.performance_6m.map((p) => (
               <tr key={p.month} className="border-t">
                 <td className="px-3 py-2">{p.month}</td>
@@ -87,13 +87,13 @@ export default async function DashboardPrintPage() {
         <table className="w-full border text-xs">
           <thead>
             <tr className="bg-[#F2F6FF]">
-              <th className="ui-table-th px-3 py-2 text-center">Código</th>
-              <th className="ui-table-th px-3 py-2 text-center">Nome</th>
-              <th className="ui-table-th px-3 py-2 text-center">Responsável</th>
-              <th className="ui-table-th px-3 py-2 text-center">Status</th>
+              <th className="ui-table-th px-3 py-2 text-left">Código</th>
+              <th className="ui-table-th px-3 py-2 text-left">Nome</th>
+              <th className="ui-table-th px-3 py-2 text-left">Responsável</th>
+              <th className="ui-table-th px-3 py-2 text-left">Status</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="ui-table-tbody">
             {data.critical_controls.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-3 py-4 text-center text-slate-500">
@@ -123,13 +123,13 @@ export default async function DashboardPrintPage() {
         <table className="w-full border text-xs">
           <thead>
             <tr className="bg-[#F2F6FF]">
-              <th className="ui-table-th px-3 py-2 text-center">Título</th>
-              <th className="ui-table-th px-3 py-2 text-center">Prioridade</th>
-              <th className="ui-table-th px-3 py-2 text-center">Status</th>
-              <th className="ui-table-th px-3 py-2 text-center">Vencimento</th>
+              <th className="ui-table-th px-3 py-2 text-left">Título</th>
+              <th className="ui-table-th px-3 py-2 text-left">Prioridade</th>
+              <th className="ui-table-th px-3 py-2 text-left">Status</th>
+              <th className="ui-table-th px-3 py-2 text-left">Vencimento</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="ui-table-tbody">
             {data.action_plans_due_soon.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-3 py-4 text-center text-slate-500">

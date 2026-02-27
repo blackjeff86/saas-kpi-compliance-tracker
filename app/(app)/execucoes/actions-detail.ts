@@ -6,6 +6,17 @@ import { getContext } from "../lib/context"
 import { ensureActionPlanForExecution } from "../action-plans/actions"
 import { closeActionPlansForExecution } from "../action-plans/actions-close"
 
+async function ensureLegacyResultTextColumn() {
+  await sql`
+    ALTER TABLE grc_reviews
+    ADD COLUMN IF NOT EXISTS result_text text
+  `
+  await sql`
+    ALTER TABLE kpi_executions
+    ADD COLUMN IF NOT EXISTS result_text text
+  `
+}
+
 export async function fetchExecutionDetail(id: string) {
   const ctx = await getContext()
 
@@ -15,16 +26,22 @@ export async function fetchExecutionDetail(id: string) {
       c.control_code,
       c.name AS control_name,
       k.kpi_code,
-      k.name AS kpi_name,
+      k.kpi_name AS kpi_name,
       e.period_start::text AS period_start,
       e.period_end::text AS period_end,
       e.result_numeric,
       e.result_notes,
       e.auto_status::text AS auto_status,
+
+      -- ✅ execução ainda pode ter workflow próprio, mas revisão usa grc_review_status
       e.workflow_status::text AS workflow_status,
+      COALESCE(e.grc_review_status::text, 'pending') AS grc_review_status,
+      e.grc_reviewed_at::text AS grc_reviewed_at,
+
       gr.decision::text AS grc_decision,
       gr.review_comment AS grc_comment,
-      gr.reviewed_at::text AS grc_reviewed_at
+      gr.reviewed_at::text AS grc_reviewed_at_log
+
     FROM kpi_executions e
     JOIN controls c ON c.id = e.control_id
     JOIN kpis k ON k.id = e.kpi_id
@@ -62,10 +79,10 @@ export async function submitGrcReview(opts: {
   executionId: string
   decision: ReviewDecision
   comment: string
-  reviewerEmail?: string // ✅ agora aceita (mantém compatibilidade com o client)
+  reviewerEmail?: string
 }) {
   const ctx = await getContext()
-  const { executionId, decision, comment } = opts // reviewerEmail não é necessário aqui (por enquanto)
+  const { executionId, decision, comment } = opts
 
   // garantir que a execução pertence ao tenant atual
   const execRes = await sql`
@@ -77,12 +94,14 @@ export async function submitGrcReview(opts: {
   `
   if (!execRes.rows[0]?.id) throw new Error("Execução não encontrada ou fora do tenant.")
 
-  const newWorkflow =
+  // ✅ status da revisão (novo)
+  const newGrcStatus =
     decision === "approved" ? "approved" :
     decision === "rejected" ? "rejected" :
     "needs_changes"
 
   // 1) upsert do review (review_comment é NOT NULL no schema)
+  await ensureLegacyResultTextColumn()
   await sql`
     INSERT INTO grc_reviews (
       tenant_id,
@@ -90,6 +109,7 @@ export async function submitGrcReview(opts: {
       reviewer_user_id,
       decision,
       review_comment,
+      result_text,
       reviewed_at
     )
     VALUES (
@@ -98,6 +118,7 @@ export async function submitGrcReview(opts: {
       ${ctx.userId},
       ${decision},
       ${comment},
+      ${comment},
       NOW()
     )
     ON CONFLICT (tenant_id, execution_id) DO UPDATE
@@ -105,18 +126,22 @@ export async function submitGrcReview(opts: {
       reviewer_user_id = EXCLUDED.reviewer_user_id,
       decision = EXCLUDED.decision,
       review_comment = EXCLUDED.review_comment,
+      result_text = EXCLUDED.result_text,
       reviewed_at = EXCLUDED.reviewed_at
   `
 
-  // 2) atualiza status da execução
+  // 2) ✅ atualiza status da revisão na execução (em vez de workflow_status)
   await sql`
     UPDATE kpi_executions
-    SET workflow_status = ${newWorkflow}
+    SET
+      grc_review_status = ${newGrcStatus},
+      result_text = COALESCE(${comment}::text, result_text),
+      grc_reviewed_at = NOW()
     WHERE tenant_id = ${ctx.tenantId}
       AND id = ${executionId}
   `
 
-  // 3) Action plans automáticos
+  // 3) Action plans automáticos (mantém sua lógica)
   if (decision === "needs_changes" || decision === "rejected") {
     await ensureActionPlanForExecution({
       executionId,

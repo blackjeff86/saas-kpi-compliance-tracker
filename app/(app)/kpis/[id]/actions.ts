@@ -71,6 +71,13 @@ function norm(v: any) {
   return String(v ?? "").trim()
 }
 
+function finiteNumberOrNull(v: any): number | null {
+  if (v === null || v === undefined || v === "") return null
+  const raw = String(v).trim().replace(",", ".")
+  const n = Number(raw)
+  return Number.isFinite(n) ? n : null
+}
+
 function toSelectedMonthDate(mes_ref?: string | null) {
   const mr = norm(mes_ref)
   if (!mr) return null
@@ -476,7 +483,7 @@ export async function fetchKpiExecutionPage(kpiId: string, mes_ref: string) {
     kpi_type: string | null
     target_operator: string | null
     target_value: any
-    warning_buffer_pct: number | null
+    warning_buffer_pct: any
   }>`
     SELECT
       k.id::text AS kpi_id,
@@ -527,10 +534,7 @@ export async function fetchKpiExecutionPage(kpiId: string, mes_ref: string) {
     target_operator: r0.target_operator ?? null,
     target_value: tvNum,
     target_boolean: (r0.kpi_type ?? "").toLowerCase() === "boolean" ? boolFromTargetValue(tvNum) : null,
-    warning_buffer_pct:
-      typeof r0.warning_buffer_pct === "number" && Number.isFinite(r0.warning_buffer_pct)
-        ? r0.warning_buffer_pct
-        : null,
+    warning_buffer_pct: finiteNumberOrNull(r0.warning_buffer_pct),
   }
 
   // 2) Execução do mês
@@ -688,7 +692,7 @@ export async function upsertKpiExecutionForMonth(args: {
     kpi_type: string | null
     target_operator: string | null
     target_value: any
-    warning_buffer_pct: number | null
+    warning_buffer_pct: any
     is_active: boolean | null
   }>`
     SELECT
@@ -712,10 +716,7 @@ export async function upsertKpiExecutionForMonth(args: {
   const target_value =
     m0.target_value === null || m0.target_value === undefined ? null : Number(m0.target_value)
 
-  const buffer =
-    typeof m0.warning_buffer_pct === "number" && Number.isFinite(m0.warning_buffer_pct)
-      ? m0.warning_buffer_pct
-      : 0.05
+  const buffer = finiteNumberOrNull(m0.warning_buffer_pct) ?? 0.05
 
   const derived_target_boolean = isBoolean ? boolFromTargetValue(target_value) : null
 

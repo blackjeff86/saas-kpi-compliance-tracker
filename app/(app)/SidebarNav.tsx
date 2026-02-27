@@ -58,7 +58,7 @@ const SECTIONS: NavSection[] = [
   },
 ]
 
-const UNFINISHED_ROUTES = new Set(["/dashboard", "/execucoes", "/revisoes", "/usuarios"])
+const UNFINISHED_ROUTES = new Set(["/dashboard", "/execucoes", "/revisoes", "/auditorias", "/usuarios"])
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/dashboard") return pathname === "/dashboard"

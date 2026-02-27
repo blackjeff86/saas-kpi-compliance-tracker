@@ -20,6 +20,8 @@ export type KpiListRow = {
    * green | yellow | red | pending | overdue | not_applicable
    */
   month_status: string | null
+  month_suggested_status: string | null
+  month_final_status: string | null
 
   // ✅ valor inserido na última execução do mês (kpi_executions.result_numeric)
   month_result_numeric: number | null
@@ -160,6 +162,7 @@ export async function fetchKpis(input: FetchKpisInput = {}): Promise<{ rows: Kpi
       SELECT DISTINCT ON (ke.kpi_id)
         ke.kpi_id,
         lower(ke.auto_status::text) AS auto_status,
+        lower(COALESCE(ke.grc_review_status::text, ke.workflow_status::text, 'pending')) AS review_status,
         ke.result_numeric,
         ke.period_start
       FROM kpi_executions ke
@@ -212,6 +215,65 @@ export async function fetchKpis(input: FetchKpisInput = {}): Promise<{ rows: Kpi
             END
         END
       )::text AS month_status,
+      (
+        CASE
+          -- aplicabilidade por frequência do controle (mesma regra de Controles/detalhe)
+          WHEN (
+            CASE
+              WHEN lower(COALESCE(c.frequency::text,'')) IN ('daily','weekly','monthly','on_demand') THEN true
+              WHEN lower(COALESCE(c.frequency::text,'')) = 'quarterly' THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,4,7,11))
+              WHEN lower(COALESCE(c.frequency::text,'')) = 'semiannual' THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,7))
+              WHEN lower(COALESCE(c.frequency::text,'')) IN ('annual','yearly') THEN (EXTRACT(MONTH FROM sm.m)::int IN (10,11,12))
+              ELSE true
+            END
+          ) = false THEN 'not_applicable'
+
+          WHEN le.kpi_id IS NULL THEN
+            CASE
+              WHEN sm.m < cm.cm THEN 'overdue'
+              ELSE 'pending'
+            END
+
+          ELSE
+            CASE COALESCE(le.auto_status,'')
+              WHEN 'in_target' THEN 'green'
+              WHEN 'warning' THEN 'yellow'
+              WHEN 'out_of_target' THEN 'red'
+              WHEN 'not_applicable' THEN 'not_applicable'
+              ELSE 'pending'
+            END
+        END
+      )::text AS month_suggested_status,
+      (
+        CASE
+          WHEN (
+            CASE
+              WHEN lower(COALESCE(c.frequency::text,'')) IN ('daily','weekly','monthly','on_demand') THEN true
+              WHEN lower(COALESCE(c.frequency::text,'')) = 'quarterly' THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,4,7,11))
+              WHEN lower(COALESCE(c.frequency::text,'')) = 'semiannual' THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,7))
+              WHEN lower(COALESCE(c.frequency::text,'')) IN ('annual','yearly') THEN (EXTRACT(MONTH FROM sm.m)::int IN (10,11,12))
+              ELSE true
+            END
+          ) = false THEN 'not_applicable'
+
+          WHEN le.kpi_id IS NULL THEN
+            CASE
+              WHEN sm.m < cm.cm THEN 'overdue'
+              ELSE 'pending'
+            END
+
+          ELSE
+            CASE COALESCE(le.review_status,'')
+              WHEN 'in_review' THEN 'under_review'
+              WHEN 'approved' THEN 'approved'
+              WHEN 'needs_changes' THEN 'needs_changes'
+              WHEN 'rejected' THEN 'rejected'
+              WHEN 'submitted' THEN 'submitted'
+              WHEN 'under_review' THEN 'under_review'
+              ELSE 'pending'
+            END
+        END
+      )::text AS month_final_status,
       le.result_numeric AS month_result_numeric,
       (SELECT to_char(m, 'YYYY-MM') FROM selected_month)::text AS mes_ref_used,
 
@@ -277,10 +339,21 @@ export async function fetchKpis(input: FetchKpisInput = {}): Promise<{ rows: Kpi
       )
     ORDER BY k.created_at DESC
   `
+
+  const finalResultBucket = (v?: string | null) => {
+    const s = String(v ?? "").trim().toLowerCase()
+    if (s === "approved") return "green"
+    if (s === "needs_changes") return "yellow"
+    if (s === "rejected") return "red"
+    if (s === "not_applicable" || s === "overdue" || s === "pending") return s
+    if (s === "submitted" || s === "under_review" || s === "in_review") return "pending"
+    return "pending"
+  }
+
   const filtered =
     resultado === ""
       ? rows
-      : rows.filter((r) => (r.month_status ?? "").toLowerCase() === resultado.toLowerCase())
+      : rows.filter((r) => finalResultBucket(r.month_final_status) === resultado.toLowerCase())
   const total = filtered.length
   const paginatedRows = filtered.slice(offset, offset + limit)
   return { rows: paginatedRows, total }
@@ -323,7 +396,7 @@ export async function fetchKpisSummary(
     latest_exec_in_month AS (
       SELECT DISTINCT ON (ke.kpi_id)
         ke.kpi_id,
-        lower(ke.auto_status::text) AS auto_status
+        lower(COALESCE(ke.grc_review_status::text, ke.workflow_status::text, 'pending')) AS review_status
       FROM kpi_executions ke
       CROSS JOIN selected_month sm
       WHERE ke.tenant_id = ${ctx.tenantId}
@@ -345,11 +418,13 @@ export async function fetchKpisSummary(
         WHEN le.kpi_id IS NULL THEN
           CASE WHEN sm.m < cm.cm THEN 'overdue' ELSE 'pending' END
         ELSE
-          CASE COALESCE(le.auto_status,'')
-            WHEN 'in_target' THEN 'green'
-            WHEN 'warning' THEN 'yellow'
-            WHEN 'out_of_target' THEN 'red'
-            WHEN 'not_applicable' THEN 'not_applicable'
+          CASE COALESCE(le.review_status,'')
+            WHEN 'approved' THEN 'green'
+            WHEN 'needs_changes' THEN 'yellow'
+            WHEN 'rejected' THEN 'red'
+            WHEN 'submitted' THEN 'pending'
+            WHEN 'under_review' THEN 'pending'
+            WHEN 'in_review' THEN 'pending'
             ELSE 'pending'
           END
       END

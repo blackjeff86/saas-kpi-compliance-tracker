@@ -22,11 +22,15 @@ type Row = {
    * critical | warning | overdue | pending | effective | not_applicable
    */
   control_result: string | null
+  control_result_suggested: string | null
 
   kpi_total: number
   kpi_red: number
   kpi_yellow: number
   kpi_green: number
+  kpi_reviewed_red: number
+  kpi_reviewed_yellow: number
+  kpi_reviewed_green: number
 }
 
 function riskBadge(v?: string | null) {
@@ -58,29 +62,66 @@ function resultBadge(v?: string | null) {
   const s = (v || "").toLowerCase()
 
   // 🔴 Critical (has red)
-  if (s === "critical") return "ui-badge-danger"
+  if (s === "critical") return "bg-red-50 text-red-700 border-red-200"
 
   // 🟡 Warning (has yellow and no red)
-  if (s === "warning") return "ui-badge-warning"
+  if (s === "warning") return "bg-amber-50 text-amber-700 border-amber-200"
 
   // 🟠 Overdue (missing and month already passed)
-  if (s === "overdue") return "ui-badge-warning"
+  if (s === "overdue") return "bg-amber-50 text-amber-700 border-amber-200"
 
   // ⚪ Pending (waiting for execution)
-  if (s === "pending") return "ui-badge-neutral"
+  if (s === "pending") return "bg-slate-50 text-slate-700 border-slate-200"
 
   // 🟢 Effective (all applicable KPIs are green)
-  if (s === "effective") return "ui-badge-success"
+  if (s === "effective") return "bg-emerald-50 text-emerald-700 border-emerald-200"
 
   // 🚫 Not applicable (outside frequency cycle)
-  if (s === "not_applicable" || s === "not-applicable") return "ui-badge-neutral"
+  if (s === "not_applicable" || s === "not-applicable") return "bg-slate-50 text-slate-700 border-slate-200"
 
-  return "ui-badge-neutral"
+  return "bg-slate-50 text-slate-700 border-slate-200"
 }
 
 function Dot({ kind }: { kind: "red" | "yellow" | "green" }) {
   const cls = kind === "red" ? "bg-risk-critical" : kind === "yellow" ? "bg-risk-medium" : "bg-risk-low"
   return <span className={`inline-block w-1.5 h-1.5 rounded-full ${cls}`} />
+}
+
+function ResultCounts({
+  total,
+  red,
+  yellow,
+  green,
+  titles = { red: "Red", yellow: "Yellow", green: "Green" },
+}: {
+  total: number
+  red: number
+  yellow: number
+  green: number
+  titles?: { red: string; yellow: string; green: string }
+}) {
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+      <span className="font-medium whitespace-nowrap mr-1">
+        KPIs: <span className="font-mono tabular-nums">{total}</span>
+      </span>
+      <span className="text-slate-300 dark:text-slate-700">•</span>
+      <span className="inline-flex items-center gap-1 whitespace-nowrap" title={titles.red}>
+        <Dot kind="red" />
+        <span className="font-mono tabular-nums">{red}</span>
+      </span>
+      <span className="text-slate-300 dark:text-slate-700">•</span>
+      <span className="inline-flex items-center gap-1 whitespace-nowrap" title={titles.yellow}>
+        <Dot kind="yellow" />
+        <span className="font-mono tabular-nums">{yellow}</span>
+      </span>
+      <span className="text-slate-300 dark:text-slate-700">•</span>
+      <span className="inline-flex items-center gap-1 whitespace-nowrap" title={titles.green}>
+        <Dot kind="green" />
+        <span className="font-mono tabular-nums">{green}</span>
+      </span>
+    </div>
+  )
 }
 
 export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?: string }) {
@@ -96,14 +137,15 @@ export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?
       <table className="w-full text-left border-collapse">
         <thead>
           <tr className="bg-[#F2F6FF] border-b border-slate-200 dark:border-slate-800">
-            <th className="ui-table-th px-4 py-3">Código</th>
-            <th className="ui-table-th px-4 py-3">Nome</th>
-            <th className="ui-table-th px-4 py-3">Framework</th>
-            <th className="ui-table-th px-4 py-3">Frequência</th>
-            <th className="ui-table-th px-4 py-3">Responsável controle</th>
-            <th className="ui-table-th px-4 py-3">Ponto focal</th>
-            <th className="ui-table-th px-4 py-3">Resultado (mês)</th>
-            <th className="ui-table-th px-4 py-3">Risco</th>
+            <th className="ui-table-th px-4 py-3 min-w-[130px]">Código</th>
+            <th className="ui-table-th px-4 py-3 min-w-[220px]">Nome</th>
+            <th className="ui-table-th px-4 py-3 min-w-[120px]">Risco</th>
+            <th className="ui-table-th px-4 py-3 min-w-[120px]">Framework</th>
+            <th className="ui-table-th px-4 py-3 min-w-[120px]">Frequência</th>
+            <th className="ui-table-th px-4 py-3 min-w-[170px]">Responsável controle</th>
+            <th className="ui-table-th px-4 py-3 min-w-[140px]">Ponto focal</th>
+            <th className="ui-table-th px-4 py-3 min-w-[260px]">Resultado sugerido</th>
+            <th className="ui-table-th px-4 py-3 min-w-[260px]">Resultado (mês)</th>
           </tr>
         </thead>
 
@@ -138,6 +180,17 @@ export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?
               </td>
 
               <td className="px-4 py-3">
+                <span
+                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${riskBadge(
+                    r.risk_level
+                  )}`}
+                >
+                  <span className="w-1 h-1 rounded-full bg-current opacity-60 mr-1.5" />
+                  {r.risk_level ?? "—"}
+                </span>
+              </td>
+
+              <td className="px-4 py-3">
                 {r.framework ? (
                   <span className={`px-2 py-0.5 ${frameworkPill()} text-[10px] font-bold rounded uppercase`}>
                     {r.framework}
@@ -157,52 +210,49 @@ export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?
                 {r.focal_point_name || r.focal_point_email || "—"}
               </td>
 
-              <td className="px-4 py-3">
-                <div className="flex flex-col gap-1">
+              <td className="px-4 py-3 align-top">
+                <div className="flex flex-col">
                   <span
-                    className={`inline-flex w-fit items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${resultBadge(
-                      r.control_result
+                    className={`inline-flex items-center px-2 py-1 rounded-md border text-xs font-medium ${resultBadge(
+                      r.control_result_suggested
                     )}`}
-                    title="Resultado do controle no mês (agregado por KPIs + frequência)"
+                    title="Resultado sugerido (agregado do auto_status dos KPIs)"
                   >
-                    <span className="w-1 h-1 rounded-full bg-current opacity-60 mr-1.5" />
-                    {resultLabel(r.control_result)}
+                    {resultLabel(r.control_result_suggested)}
                   </span>
 
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-2">
-                    <span className="font-medium">
-                      KPIs: <span className="font-mono">{r.kpi_total ?? 0}</span>
-                    </span>
-
-                    <span className="text-slate-300 dark:text-slate-700">•</span>
-
-                    <span className="inline-flex items-center gap-1" title="Red">
-                      <Dot kind="red" />
-                      <span className="font-mono">{r.kpi_red ?? 0}</span>
-                    </span>
-
-                    <span className="inline-flex items-center gap-1" title="Yellow">
-                      <Dot kind="yellow" />
-                      <span className="font-mono">{r.kpi_yellow ?? 0}</span>
-                    </span>
-
-                    <span className="inline-flex items-center gap-1" title="Green">
-                      <Dot kind="green" />
-                      <span className="font-mono">{r.kpi_green ?? 0}</span>
-                    </span>
-                  </div>
+                  <ResultCounts
+                    total={r.kpi_total ?? 0}
+                    red={r.kpi_red ?? 0}
+                    yellow={r.kpi_yellow ?? 0}
+                    green={r.kpi_green ?? 0}
+                  />
                 </div>
               </td>
 
-              <td className="px-4 py-3">
-                <span
-                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${riskBadge(
-                    r.risk_level
-                  )}`}
-                >
-                  <span className="w-1 h-1 rounded-full bg-current opacity-60 mr-1.5" />
-                  {r.risk_level ?? "—"}
-                </span>
+              <td className="px-4 py-3 align-top">
+                <div className="flex flex-col">
+                  <span
+                    className={`inline-flex items-center px-2 py-1 rounded-md border text-xs font-medium ${resultBadge(
+                      r.control_result
+                    )}`}
+                    title="Resultado final do controle no mês (após revisão GRC)"
+                  >
+                    {resultLabel(r.control_result)}
+                  </span>
+
+                  <ResultCounts
+                    total={r.kpi_total ?? 0}
+                    red={r.kpi_reviewed_red ?? 0}
+                    yellow={r.kpi_reviewed_yellow ?? 0}
+                    green={r.kpi_reviewed_green ?? 0}
+                    titles={{
+                      red: "Red (revisados GRC)",
+                      yellow: "Yellow (revisados GRC)",
+                      green: "Green (revisados GRC)",
+                    }}
+                  />
+                </div>
               </td>
             </tr>
           ))}

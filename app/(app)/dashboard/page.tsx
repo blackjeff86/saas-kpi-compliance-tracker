@@ -227,7 +227,7 @@ export default async function Page({
                   <th className="ui-table-th px-4 py-3">Nome do controle</th>
                   <th className="ui-table-th px-4 py-3">Responsável</th>
                   <th className="ui-table-th px-4 py-3">Status</th>
-                  <th className="ui-table-th px-4 py-3 text-center">Ações</th>
+                  <th className="ui-table-th px-4 py-3 text-left">Ações</th>
                 </tr>
               </thead>
 

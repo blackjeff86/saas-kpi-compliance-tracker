@@ -304,7 +304,7 @@ export default function FiltersBar({
       </div>
 
       <div className="text-xs text-slate-400">
-        Dica: selecione o <b>Mês ref</b> para ver o <b>auto_status do KPI no mês</b> na listagem.
+        Dica: selecione o <b>Mês ref</b> para ver o <b>resultado final do KPI no mês (após revisão GRC)</b>.
       </div>
     </div>
   )

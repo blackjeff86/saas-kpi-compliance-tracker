@@ -6,7 +6,8 @@ import { fetchKpis, fetchKpisFilterOptions, fetchControlsForKpiSelect, fetchKpis
 import FiltersBar from "./FiltersBar"
 import KpisTable from "./KpisTable"
 import NewKpiModal from "./NewKpiModal"
-import { ChevronLeft, ChevronRight, ClipboardList, CheckCircle, AlertTriangle, XCircle } from "lucide-react"
+import { ClipboardList, CheckCircle, AlertTriangle, XCircle } from "lucide-react"
+import TablePaginationFooter from "../components/TablePaginationFooter"
 
 type SearchParams = Record<string, string | string[] | undefined>
 
@@ -189,43 +190,14 @@ export default async function KpisPage(props: { searchParams?: Promise<SearchPar
             />
           )}
 
-          <div className="px-4 py-3 bg-white dark:bg-background-dark border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="text-sm text-slate-500">
-              Mostrando{" "}
-              <span className="font-semibold text-slate-900 dark:text-white">{from}</span> a{" "}
-              <span className="font-semibold text-slate-900 dark:text-white">{to}</span> de{" "}
-              <span className="font-semibold text-slate-900 dark:text-white">{total}</span> resultados
-            </div>
-
-            <div className="flex items-center gap-2 justify-end">
-              <Link
-                aria-disabled={page <= 1}
-                href={mkHref(Math.max(1, page - 1))}
-                className={`p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-primary hover:border-primary ${
-                  page <= 1 ? "pointer-events-none opacity-50" : ""
-                }`}
-                title="Anterior"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </Link>
-
-              <div className="text-sm text-slate-500">
-                Página <span className="font-semibold text-slate-900 dark:text-white">{page}</span> /{" "}
-                <span className="font-semibold text-slate-900 dark:text-white">{totalPages}</span>
-              </div>
-
-              <Link
-                aria-disabled={page >= totalPages}
-                href={mkHref(Math.min(totalPages, page + 1))}
-                className={`p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-primary hover:border-primary ${
-                  page >= totalPages ? "pointer-events-none opacity-50" : ""
-                }`}
-                title="Próxima"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </Link>
-            </div>
-          </div>
+          <TablePaginationFooter
+            from={from}
+            to={to}
+            total={total}
+            page={page}
+            prevHref={page <= 1 ? null : mkHref(Math.max(1, page - 1))}
+            nextHref={page >= totalPages ? null : mkHref(Math.min(totalPages, page + 1))}
+          />
         </div>
       </div>
     </PageContainer>

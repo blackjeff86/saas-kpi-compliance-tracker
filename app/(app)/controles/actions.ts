@@ -32,12 +32,16 @@ export type ControlRow = {
    * critical | warning | overdue | pending | effective | not_applicable
    */
   control_result: string | null
+  control_result_suggested: string | null
 
   // ✅ contadores de KPIs associados ao controle (no mês)
   kpi_total: number
   kpi_red: number
   kpi_yellow: number
   kpi_green: number
+  kpi_reviewed_red: number
+  kpi_reviewed_yellow: number
+  kpi_reviewed_green: number
 }
 
 export type FetchControlsInput = {
@@ -49,6 +53,7 @@ export type FetchControlsInput = {
   framework?: string
   frequency?: string
   risk?: string
+  resultado?: string
   owner?: string
   focal?: string
 }
@@ -141,12 +146,16 @@ export async function fetchControlsPage(
   const framework = (input.framework ?? "").trim()
   const frequency = (input.frequency ?? "").trim()
   const risk = (input.risk ?? "").trim()
+  const resultado = (input.resultado ?? "").trim().toLowerCase()
   const owner = (input.owner ?? "").trim()
   const focal = (input.focal ?? "").trim()
 
   const noLimit = input.limit === 0
   const limit = noLimit ? 99999 : Math.max(1, Math.min(100, input.limit ?? 10))
   const offset = Math.max(0, input.offset ?? 0)
+  const shouldFilterResultado = Boolean(resultado)
+  const dbLimit = shouldFilterResultado ? 99999 : limit
+  const dbOffset = shouldFilterResultado ? 0 : offset
 
   const totalRes = noScope
     ? await sql<{ total: number }>`
@@ -206,7 +215,8 @@ export async function fetchControlsPage(
       -- última execução por KPI no mês selecionado
       SELECT DISTINCT ON (ke.kpi_id)
         ke.kpi_id,
-        ke.auto_status::text AS auto_status
+        ke.auto_status::text AS auto_status,
+        lower(COALESCE(ke.grc_review_status::text, ke.workflow_status::text, 'pending')) AS review_status
       FROM kpi_executions ke
       CROSS JOIN selected_month sm
       WHERE ke.tenant_id = ${ctx.tenantId}
@@ -229,9 +239,7 @@ export async function fetchControlsPage(
           ELSE true
         END AS is_applicable,
 
-        le.auto_status::text AS db_status,
-
-        -- status final do KPI (green/yellow/red/pending/overdue/not_applicable)
+        -- status sugerido pelo ponto focal (auto_status)
         CASE
           WHEN NOT (
             CASE
@@ -257,7 +265,37 @@ export async function fetchControlsPage(
               WHEN 'not_applicable' THEN 'not_applicable'
               ELSE 'pending'
             END
-        END::text AS kpi_status
+        END::text AS kpi_suggested_status,
+
+        -- status final após revisão GRC
+        CASE
+          WHEN NOT (
+            CASE
+              WHEN lower(COALESCE(c.frequency::text,'')) IN ('daily','weekly','monthly','on_demand') THEN true
+              WHEN lower(COALESCE(c.frequency::text,'')) IN ('quarterly') THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,4,7,11))
+              WHEN lower(COALESCE(c.frequency::text,'')) IN ('semiannual') THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,7))
+              WHEN lower(COALESCE(c.frequency::text,'')) IN ('annual') THEN (EXTRACT(MONTH FROM sm.m)::int IN (10,11,12))
+              ELSE true
+            END
+          ) THEN 'not_applicable'
+
+          WHEN le.kpi_id IS NULL THEN
+            CASE
+              WHEN sm.m < cm.cm THEN 'overdue'
+              ELSE 'pending'
+            END
+
+          ELSE
+            CASE lower(COALESCE(le.review_status,''))
+              WHEN 'in_review' THEN 'pending'
+              WHEN 'submitted' THEN 'pending'
+              WHEN 'under_review' THEN 'pending'
+              WHEN 'approved' THEN 'green'
+              WHEN 'needs_changes' THEN 'yellow'
+              WHEN 'rejected' THEN 'red'
+              ELSE 'pending'
+            END
+        END::text AS kpi_final_status
 
       FROM controls c
       LEFT JOIN kpis k ON k.control_id = c.id AND k.tenant_id = ${ctx.tenantId}
@@ -281,7 +319,7 @@ export async function fetchControlsPage(
         END AS month_applicable,
 
         MAX(
-          CASE kms.kpi_status
+          CASE kms.kpi_suggested_status
             WHEN 'red' THEN 5
             WHEN 'yellow' THEN 4
             WHEN 'overdue' THEN 3
@@ -289,7 +327,17 @@ export async function fetchControlsPage(
             WHEN 'green' THEN 1
             ELSE 0
           END
-        )::int AS worst_sev
+        )::int AS worst_suggested_sev,
+        MAX(
+          CASE kms.kpi_final_status
+            WHEN 'red' THEN 5
+            WHEN 'yellow' THEN 4
+            WHEN 'overdue' THEN 3
+            WHEN 'pending' THEN 2
+            WHEN 'green' THEN 1
+            ELSE 0
+          END
+        )::int AS worst_final_sev
       FROM controls c
       CROSS JOIN selected_month sm
       LEFT JOIN kpi_month_status kms ON kms.control_id = c.id
@@ -301,9 +349,12 @@ export async function fetchControlsPage(
       SELECT
         c.id AS control_id,
         COUNT(k.id)::int AS kpi_total,
-        SUM(CASE WHEN kms.kpi_status = 'red' THEN 1 ELSE 0 END)::int AS kpi_red,
-        SUM(CASE WHEN kms.kpi_status = 'yellow' THEN 1 ELSE 0 END)::int AS kpi_yellow,
-        SUM(CASE WHEN kms.kpi_status = 'green' THEN 1 ELSE 0 END)::int AS kpi_green
+        SUM(CASE WHEN kms.kpi_suggested_status = 'red' THEN 1 ELSE 0 END)::int AS kpi_red,
+        SUM(CASE WHEN kms.kpi_suggested_status = 'yellow' THEN 1 ELSE 0 END)::int AS kpi_yellow,
+        SUM(CASE WHEN kms.kpi_suggested_status = 'green' THEN 1 ELSE 0 END)::int AS kpi_green,
+        SUM(CASE WHEN kms.kpi_final_status = 'red' THEN 1 ELSE 0 END)::int AS kpi_reviewed_red,
+        SUM(CASE WHEN kms.kpi_final_status = 'yellow' THEN 1 ELSE 0 END)::int AS kpi_reviewed_yellow,
+        SUM(CASE WHEN kms.kpi_final_status = 'green' THEN 1 ELSE 0 END)::int AS kpi_reviewed_green
       FROM controls c
       LEFT JOIN kpis k ON k.control_id = c.id AND k.tenant_id = ${ctx.tenantId}
       LEFT JOIN kpi_month_status kms ON kms.kpi_id = k.id
@@ -329,18 +380,31 @@ export async function fetchControlsPage(
 
       CASE
         WHEN cw.month_applicable = false THEN 'not_applicable'
-        WHEN cw.worst_sev = 5 THEN 'critical'
-        WHEN cw.worst_sev = 4 THEN 'warning'
-        WHEN cw.worst_sev = 3 THEN 'overdue'
-        WHEN cw.worst_sev = 2 THEN 'pending'
-        WHEN cw.worst_sev = 1 THEN 'effective'
+        WHEN cw.worst_final_sev = 5 THEN 'critical'
+        WHEN cw.worst_final_sev = 4 THEN 'warning'
+        WHEN cw.worst_final_sev = 3 THEN 'overdue'
+        WHEN cw.worst_final_sev = 2 THEN 'pending'
+        WHEN cw.worst_final_sev = 1 THEN 'effective'
         ELSE 'pending'
       END::text AS control_result,
+
+      CASE
+        WHEN cw.month_applicable = false THEN 'not_applicable'
+        WHEN cw.worst_suggested_sev = 5 THEN 'critical'
+        WHEN cw.worst_suggested_sev = 4 THEN 'warning'
+        WHEN cw.worst_suggested_sev = 3 THEN 'overdue'
+        WHEN cw.worst_suggested_sev = 2 THEN 'pending'
+        WHEN cw.worst_suggested_sev = 1 THEN 'effective'
+        ELSE 'pending'
+      END::text AS control_result_suggested,
 
       COALESCE(cc.kpi_total, 0)::int AS kpi_total,
       COALESCE(cc.kpi_red, 0)::int AS kpi_red,
       COALESCE(cc.kpi_yellow, 0)::int AS kpi_yellow,
-      COALESCE(cc.kpi_green, 0)::int AS kpi_green
+      COALESCE(cc.kpi_green, 0)::int AS kpi_green,
+      COALESCE(cc.kpi_reviewed_red, 0)::int AS kpi_reviewed_red,
+      COALESCE(cc.kpi_reviewed_yellow, 0)::int AS kpi_reviewed_yellow,
+      COALESCE(cc.kpi_reviewed_green, 0)::int AS kpi_reviewed_green
 
     FROM controls c
     LEFT JOIN frameworks f ON f.id = c.framework_id
@@ -382,10 +446,16 @@ export async function fetchControlsPage(
       )
 
     ORDER BY c.created_at DESC
-    LIMIT ${limit} OFFSET ${offset}
+    LIMIT ${dbLimit} OFFSET ${dbOffset}
   `
+  if (!shouldFilterResultado) {
+    return { rows: pageRes.rows, total }
+  }
 
-  return { rows: pageRes.rows, total }
+  const filteredRows = pageRes.rows.filter((r) => (r.control_result ?? "").toLowerCase() === resultado)
+  const totalFiltered = filteredRows.length
+  const paginatedRows = filteredRows.slice(offset, offset + limit)
+  return { rows: paginatedRows, total: totalFiltered }
 }
 
 export type ControlsSummary = {
@@ -403,6 +473,9 @@ export async function fetchControlsSummary(
 ): Promise<ControlsSummary> {
   const { rows } = await fetchControlsPage({
     ...input,
+    // cards devem refletir a distribuição completa do resultado final (coluna "Resultado (mês)")
+    // e não apenas um resultado específico selecionado no filtro.
+    resultado: "",
     limit: 0,
     offset: 0,
   })

@@ -4,6 +4,7 @@
 import Link from "next/link"
 import { useMemo, useState } from "react"
 import type { AuditHubData, AuditHubCampaignRow } from "./actions"
+import TablePaginationFooter from "../components/TablePaginationFooter"
 
 function clsx(...p: Array<string | false | null | undefined>) {
   return p.filter(Boolean).join(" ")
@@ -136,20 +137,29 @@ export default function AuditHubClient({ initialData }: Props) {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-center">
+          <table className="w-full text-sm text-left">
+            <colgroup>
+              <col className="w-[30%]" />
+              <col className="w-[11%]" />
+              <col className="w-[13%]" />
+              <col className="w-[14%]" />
+              <col className="w-[14%]" />
+              <col className="w-[14%]" />
+              <col className="w-[4%]" />
+            </colgroup>
             <thead>
               <tr className="bg-[#F2F6FF] border-b border-slate-200 dark:border-slate-800">
-                <th className="ui-table-th px-4 py-3">Nome da Campanha</th>
-                <th className="ui-table-th px-4 py-3">Framework</th>
-                <th className="ui-table-th px-4 py-3 text-center">Status</th>
-                <th className="ui-table-th px-4 py-3">Progresso</th>
-                <th className="ui-table-th px-4 py-3">Responsável</th>
-                <th className="ui-table-th px-4 py-3">Período</th>
-                <th className="ui-table-th px-4 py-3 text-center">Ações</th>
+                <th className="ui-table-th pl-8 pr-6 py-3">Nome da Campanha</th>
+                <th className="ui-table-th px-6 py-3">Framework</th>
+                <th className="ui-table-th px-6 py-3 text-left">Status</th>
+                <th className="ui-table-th px-6 py-3">Progresso</th>
+                <th className="ui-table-th px-6 py-3">Responsável</th>
+                <th className="ui-table-th px-6 py-3">Período</th>
+                <th className="ui-table-th px-6 py-3 text-left whitespace-nowrap">Ações</th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="ui-table-tbody divide-y divide-slate-100">
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-8 text-sm text-slate-500">
@@ -163,29 +173,15 @@ export default function AuditHubClient({ initialData }: Props) {
           </table>
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
-          <span className="text-xs text-slate-500">
-            Mostrando {rows.length} de {initialData.campaigns.length} campanhas
-          </span>
-          <div className="flex gap-2">
-            <button
-              className="px-3 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 transition-colors"
-              type="button"
-              disabled
-              title="Paginação (placeholder)"
-            >
-              Anterior
-            </button>
-            <button
-              className="px-3 py-1 text-xs border border-slate-200 rounded hover:bg-slate-50 transition-colors"
-              type="button"
-              disabled
-              title="Paginação (placeholder)"
-            >
-              Próxima
-            </button>
-          </div>
-        </div>
+        <TablePaginationFooter
+          from={rows.length === 0 ? 0 : 1}
+          to={rows.length}
+          total={initialData.campaigns.length}
+          page={1}
+          prevHref={null}
+          nextHref={null}
+          itemLabel="campanhas"
+        />
       </div>
     </div>
   )
@@ -236,7 +232,7 @@ function Row({ r }: { r: AuditHubCampaignRow }) {
 
   return (
     <tr className="hover:bg-slate-50 transition-colors">
-      <td className="px-6 py-4">
+      <td className="pl-8 pr-6 py-4">
         <span className="font-semibold text-slate-900">{r.name}</span>
       </td>
 
@@ -246,7 +242,7 @@ function Row({ r }: { r: AuditHubCampaignRow }) {
         </span>
       </td>
 
-      <td className="px-6 py-4 text-center">
+      <td className="px-6 py-4">
         <span
           className={clsx(
             "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase",
@@ -280,8 +276,8 @@ function Row({ r }: { r: AuditHubCampaignRow }) {
         <span className="text-xs text-slate-500">{fmtPeriod(r.period_start, r.period_end)}</span>
       </td>
 
-      <td className="px-6 py-4 text-center">
-        <div className="flex items-center justify-center gap-2">
+      <td className="px-6 py-4 whitespace-nowrap">
+        <div className="flex items-center gap-2">
           <Link
             href={`/auditorias/${r.id}/acompanhamento`}
             className="px-2 py-1 text-xs font-semibold text-slate-600 hover:text-primary hover:bg-primary/10 rounded"
@@ -301,6 +297,3 @@ function initials(name: string) {
   const b = parts.length > 1 ? parts[parts.length - 1][0] : ""
   return (a + b).toUpperCase()
 }
-
-
-

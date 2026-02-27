@@ -128,11 +128,12 @@ export default function FiltersBar({
     const framework = (searchParams.get("framework") ?? "").trim()
     const frequency = (searchParams.get("frequency") ?? "").trim()
     const risk = (searchParams.get("risk") ?? "").trim()
+    const resultado = (searchParams.get("resultado") ?? "").trim()
     const owner = (searchParams.get("owner") ?? "").trim()
     const focal = (searchParams.get("focal") ?? "").trim()
     const monthDiff = (searchParams.get("mes_ref") ?? "").trim() && !isCurrentMonth
 
-    return Boolean(qv || framework || frequency || risk || owner || focal || monthDiff)
+    return Boolean(qv || framework || frequency || risk || resultado || owner || focal || monthDiff)
   }, [searchParams, isCurrentMonth])
 
   return (
@@ -263,6 +264,22 @@ export default function FiltersBar({
               {v}
             </option>
           ))}
+        </select>
+
+        {/* Resultado (mês) */}
+        <select
+          value={searchParams.get("resultado") ?? ""}
+          onChange={(e) => setParam("resultado", e.target.value)}
+          className={`w-[200px] ${selectField}`}
+          title="Filtrar por Resultado (mês)"
+        >
+          <option value="">Resultado (mês)</option>
+          <option value="critical">Critical</option>
+          <option value="warning">Warning</option>
+          <option value="effective">Effective</option>
+          <option value="pending">Pending</option>
+          <option value="overdue">Overdue</option>
+          <option value="not_applicable">Not applicable</option>
         </select>
 
         {/* Owner */}

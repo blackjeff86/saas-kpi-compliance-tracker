@@ -1,7 +1,7 @@
 // app/(app)/kpis/[id]/KpiExecutionClient.tsx
 "use client"
 
-import React, { useMemo, useState, useTransition } from "react"
+import React, { useEffect, useMemo, useState, useTransition } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -9,21 +9,38 @@ import {
   CheckCircle2,
   ClipboardList,
   CloudUpload,
-  Download,
   Eye,
   Loader2,
   Save,
   Search,
   Pencil,
   X,
+  Circle,
+  Plus,
 } from "lucide-react"
 
 import { formatDatePtBr } from "@/lib/utils"
 import type { KpiDetail, KpiExecutionForMonth, KpiHistoryRow, ActionPlanForKpiRow } from "./actions"
 import { upsertKpiExecutionForMonth, updateKpiConfig, createActionPlanForKpi } from "./actions"
+import { computeAutoStatus } from "../../lib/auto-status"
 
 function safe(v: any) {
   return String(v ?? "").trim()
+}
+
+function finiteNumberOrNull(v: any): number | null {
+  if (v === null || v === undefined || v === "") return null
+  const raw = String(v).trim().replace(",", ".")
+  const n = Number(raw)
+  return Number.isFinite(n) ? n : null
+}
+
+function boolFromNumericValue(v: number | null | undefined): boolean | null {
+  if (v === null || v === undefined) return null
+  if (!Number.isFinite(v)) return null
+  if (v === 1) return true
+  if (v === 0) return false
+  return null
 }
 
 function formatMonthLabel(yyyyMm: string) {
@@ -49,44 +66,16 @@ function formatMetaValueOnly(val?: number | null) {
   return String(val)
 }
 
-function computeAutoStatusNumeric(opts: {
-  target_operator?: string | null
-  target_value?: number | null
-  result_numeric?: number | null
-  bufferPct?: number
-}) {
-  const bufferPct = opts.bufferPct ?? 0.05
-  const target = opts.target_value
-  const op = (opts.target_operator ?? "").toLowerCase()
-  const val = opts.result_numeric
-
-  if (target === null || target === undefined) return "unknown"
-  if (val === null || val === undefined) return "unknown"
-
-  if (op === "gte" || op === ">=") {
-    if (val >= target) return "in_target"
-    if (val >= target * (1 - bufferPct)) return "warning"
-    return "out_of_target"
-  }
-
-  if (op === "lte" || op === "<=") {
-    if (val <= target) return "in_target"
-    if (val <= target * (1 + bufferPct)) return "warning"
-    return "out_of_target"
-  }
-
-  if (op === "eq" || op === "=") {
-    return val === target ? "in_target" : "out_of_target"
-  }
-
-  return "unknown"
-}
-
-function autoStatusLabel(s?: string | null) {
+function autoStatusLabel(s?: string | null, targetOperator?: string | null) {
   const v = (s ?? "").toLowerCase()
   if (v === "in_target") return "Em Conformidade"
   if (v === "warning") return "Próximo da Meta"
-  if (v === "out_of_target") return "Abaixo da Meta"
+  if (v === "out_of_target") {
+    const op = (targetOperator ?? "").toString().toLowerCase()
+    if (op === "lte" || op === "<=" || op.includes("menor") || op.includes("lower")) return "Acima da Meta"
+    if (op === "gte" || op === ">=" || op.includes("maior") || op.includes("higher")) return "Abaixo da Meta"
+    return "Fora da Meta"
+  }
   if (v === "not_applicable") return "Não Aplicável"
   return "Aguardando Entrada"
 }
@@ -109,6 +98,54 @@ function autoStatusBoxClass(v?: string | null) {
   if (s === "out_of_target") return "bg-red-50 text-red-700 border-red-100"
   if (s === "not_applicable") return "bg-slate-50 text-slate-700 border-slate-200"
   return "bg-slate-50 text-slate-700 border-slate-200"
+}
+
+function actionPlanStatusLabel(v?: string | null) {
+  const s = safe(v).toLowerCase()
+  if (s === "not_started") return "Não iniciado"
+  if (s === "in_progress") return "Em andamento"
+  if (s === "completed" || s === "done") return "Concluído"
+  if (s === "blocked") return "Bloqueado"
+  if (s === "cancelled") return "Cancelado"
+  return "—"
+}
+
+function actionPlanStatusBadge(v?: string | null) {
+  const s = safe(v).toLowerCase()
+  if (s === "completed" || s === "done") return "bg-emerald-50 text-emerald-700 border-emerald-200"
+  if (s === "in_progress") return "bg-blue-50 text-blue-700 border-blue-200"
+  if (s === "blocked" || s === "cancelled") return "bg-red-50 text-red-700 border-red-200"
+  if (s === "not_started") return "bg-slate-50 text-slate-700 border-slate-200"
+  return "bg-slate-50 text-slate-700 border-slate-200"
+}
+
+// ✅ NOVO: status de revisão (coluna nova no banco: grc_review_status)
+function reviewStatusNormalize(v?: string | null) {
+  const s = safe(v).toLowerCase()
+  if (!s) return ""
+  // aceita alguns legados
+  if (s === "in_review") return "under_review"
+  return s
+}
+
+function reviewStatusLabel(v?: string | null) {
+  const s = reviewStatusNormalize(v)
+  if (s === "submitted") return "Enviado para Revisão"
+  if (s === "under_review") return "Em Revisão"
+  if (s === "approved") return "Aprovado"
+  if (s === "needs_changes") return "Ajustes Necessários"
+  if (s === "rejected") return "Rejeitado"
+  return "—"
+}
+
+function reviewStatusBadgeClass(v?: string | null) {
+  const s = reviewStatusNormalize(v)
+  if (s === "approved") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+  if (s === "under_review") return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+  if (s === "submitted") return "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
+  if (s === "needs_changes") return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+  if (s === "rejected") return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+  return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"
 }
 
 type KpiMetaType = "percent" | "number" | "boolean"
@@ -142,14 +179,20 @@ export default function KpiExecutionClient(props: {
 
   const [configOpen, setConfigOpen] = useState(false)
 
-  // ✅ Plano de ação (obrigatório quando abaixo da meta)
+  // ✅ Plano de ação (obrigatório quando fora da meta)
   const [apOpen, setApOpen] = useState(false)
   const [apTitle, setApTitle] = useState("")
   const [apDescription, setApDescription] = useState("")
   const [apResponsible, setApResponsible] = useState("")
   const [apDueDate, setApDueDate] = useState("") // yyyy-mm-dd
   const [apPriority, setApPriority] = useState<ActionPriority>("medium")
-  const [actionPlanRegistered, setActionPlanRegistered] = useState(false)
+
+  // ✅ melhoria: se já existe plano de ação para o mês atual, não exigir novamente
+  const [actionPlanRegistered, setActionPlanRegistered] = useState<boolean>(() => {
+    const mr = safe(mes_ref_used)
+    if (!mr) return false
+    return (actionPlans ?? []).some((ap) => safe(ap.mes_ref) === mr)
+  })
 
   const [metaType, setMetaType] = useState<KpiMetaType>(() => {
     const t = String((kpi as any)?.kpi_type ?? "").toLowerCase()
@@ -195,8 +238,8 @@ export default function KpiExecutionClient(props: {
   })
 
   const [warningPctText, setWarningPctText] = useState<string>(() => {
-    const pct = typeof (kpi as any).warning_buffer_pct === "number" ? (kpi as any).warning_buffer_pct : null
-    if (typeof pct === "number") return String((pct * 100).toFixed(0))
+    const pct = finiteNumberOrNull((kpi as any).warning_buffer_pct)
+    if (pct !== null) return String((pct * 100).toFixed(0))
     return "5"
   })
 
@@ -216,22 +259,77 @@ export default function KpiExecutionClient(props: {
     return Math.min(Math.max(pct, 0), 0.5)
   }, [warningPctText])
 
+  const toleranceWarningPct = useMemo(() => {
+    const pct = finiteNumberOrNull((kpi as any).warning_buffer_pct)
+    if (pct === null) return null
+    return Number((pct * 100).toFixed(0))
+  }, [kpi])
+
+  // ✅ manter actionPlanRegistered coerente se props mudarem
+  useEffect(() => {
+    const mr = safe(mes_ref_used)
+    const has = (actionPlans ?? []).some((ap) => safe(ap.mes_ref) === mr)
+    setActionPlanRegistered(has)
+  }, [actionPlans, mes_ref_used])
+
+  useEffect(() => {
+    const nextTypeRaw = String((kpi as any)?.kpi_type ?? "").toLowerCase()
+    const nextMetaType: KpiMetaType =
+      nextTypeRaw === "percent" ? "percent" : nextTypeRaw === "boolean" ? "boolean" : "number"
+    const nextDirection: KpiDirection =
+      nextMetaType === "boolean"
+        ? "yes_no"
+        : (kpi.target_operator ?? "").toLowerCase() === "lte" || (kpi.target_operator ?? "").toLowerCase() === "<="
+          ? "lower_better"
+          : "higher_better"
+
+    const currentTarget = getActiveTargetValueOnly(kpi)
+    const nextBooleanText: "0" | "1" = Number((kpi as any)?.target_value) === 0 ? "0" : "1"
+    const nextNumericText = currentTarget === null || currentTarget === undefined ? "" : String(currentTarget)
+
+    const savedWarning = finiteNumberOrNull((kpi as any)?.warning_buffer_pct)
+    const nextWarningText = savedWarning === null ? "5" : String((savedWarning * 100).toFixed(0))
+
+    setMetaType(nextMetaType)
+    setDirection(nextDirection)
+    setLastNonBooleanMetaType(nextMetaType === "percent" ? "percent" : "number")
+    setLastBooleanTargetText(nextBooleanText)
+    setLastNumericTargetText(nextNumericText)
+    setTargetText(nextMetaType === "boolean" ? nextBooleanText : nextNumericText)
+    setWarningPctText(nextWarningText)
+  }, [kpi])
+
   const resultNumeric = useMemo(() => {
     const t = safe(resultText)
     if (!t) return null
-    const n = Number(t)
+    const normalized = t.replace(",", ".")
+    const n = Number(normalized)
     return Number.isFinite(n) ? n : null
   }, [resultText])
 
   const liveStatus = useMemo(() => {
     if (!isActive) return "unknown"
-    return computeAutoStatusNumeric({
-      target_operator: activeTargetOperator,
-      target_value: activeTargetValue,
-      result_numeric: resultNumeric,
-      bufferPct: typeof (kpi as any).warning_buffer_pct === "number" ? (kpi as any).warning_buffer_pct : 0.05,
-    })
-  }, [isActive, activeTargetOperator, activeTargetValue, (kpi as any).warning_buffer_pct, resultNumeric])
+    return computeAutoStatus(
+      {
+        kpi_type: (kpi as any)?.kpi_type ?? null,
+        target_operator: activeTargetOperator,
+        target_value: activeTargetValue,
+      },
+      {
+        result_numeric: resultNumeric,
+        result_boolean: isBooleanKpi ? boolFromNumericValue(resultNumeric) : null,
+      },
+      finiteNumberOrNull((kpi as any).warning_buffer_pct) ?? 0.05
+    )
+  }, [
+    isActive,
+    isBooleanKpi,
+    (kpi as any)?.kpi_type,
+    activeTargetOperator,
+    activeTargetValue,
+    (kpi as any).warning_buffer_pct,
+    resultNumeric,
+  ])
 
   const shouldRequireActionPlan = useMemo(() => {
     return String(liveStatus).toLowerCase() === "out_of_target"
@@ -242,7 +340,9 @@ export default function KpiExecutionClient(props: {
     if (!qq) return history
     return history.filter((h) => {
       const p = safe(h.period_start)
-      return p.toLowerCase().includes(qq) || (p ? formatMonthLabel(p.slice(0, 7)).toLowerCase().includes(qq) : false)
+      return (
+        p.toLowerCase().includes(qq) || (p ? formatMonthLabel(p.slice(0, 7)).toLowerCase().includes(qq) : false)
+      )
     })
   }, [q, history])
 
@@ -268,8 +368,10 @@ export default function KpiExecutionClient(props: {
 
   function validateResult() {
     const t = safe(resultText)
-    const parsed = t === "" ? null : Number(t)
-    if (t !== "" && Number.isNaN(parsed)) return "Resultado inválido. Use apenas números (ex: 96.5)."
+    if (!t) return null
+    const normalized = t.replace(",", ".")
+    const parsed = Number(normalized)
+    if (!Number.isFinite(parsed)) return "Resultado inválido. Use apenas números (ex: 96.5 ou 96,5)."
     return null
   }
 
@@ -280,8 +382,7 @@ export default function KpiExecutionClient(props: {
       return
     }
 
-    const t = safe(resultText)
-    const parsed = t === "" ? null : Number(t)
+    const parsed = resultNumeric
 
     startTransition(async () => {
       try {
@@ -292,7 +393,14 @@ export default function KpiExecutionClient(props: {
           result_notes: safe(notes) ? notes : null,
         })
 
-        setMsg(`Salvo com sucesso. Execução: ${resp.executionId ?? "OK"}`)
+        // ✅ se o backend já devolver grc_review_status, mostramos também
+        const grc = reviewStatusNormalize((resp as any)?.grc_review_status)
+        if (grc === "submitted") {
+          setMsg(`Salvo com sucesso. Execução: ${resp.executionId ?? "OK"}. Enviado para Revisão.`)
+        } else {
+          setMsg(`Salvo com sucesso. Execução: ${resp.executionId ?? "OK"}`)
+        }
+
         router.refresh()
       } catch (e: any) {
         setErr(e?.message || "Falha ao salvar execução.")
@@ -304,7 +412,7 @@ export default function KpiExecutionClient(props: {
     setMsg("")
     setErr("")
 
-    // ✅ regra: se abaixo da meta, obrigatório criar AP antes de salvar
+    // ✅ regra: se fora da meta, obrigatório ter AP (mas se já existe AP no mês, segue)
     if (shouldRequireActionPlan && !actionPlanRegistered) {
       openActionPlanModal()
       return
@@ -412,13 +520,19 @@ export default function KpiExecutionClient(props: {
   }, [direction])
 
   const previewStatus = useMemo(() => {
-    if (metaType === "boolean" || direction === "yes_no") return "unknown"
-    return computeAutoStatusNumeric({
-      target_operator: previewOperator,
-      target_value: targetNumericDraft,
-      result_numeric: resultNumeric,
-      bufferPct: warningPctDraft,
-    })
+    const previewIsBoolean = metaType === "boolean" || direction === "yes_no"
+    return computeAutoStatus(
+      {
+        kpi_type: previewIsBoolean ? "boolean" : metaType,
+        target_operator: previewIsBoolean ? "eq" : previewOperator,
+        target_value: targetNumericDraft,
+      },
+      {
+        result_numeric: resultNumeric,
+        result_boolean: previewIsBoolean ? boolFromNumericValue(resultNumeric) : null,
+      },
+      warningPctDraft
+    )
   }, [metaType, direction, previewOperator, targetNumericDraft, resultNumeric, warningPctDraft])
 
   const configHasErrors = useMemo(() => {
@@ -473,6 +587,8 @@ export default function KpiExecutionClient(props: {
     })
   }
 
+  const execReviewStatus = reviewStatusNormalize((execution as any)?.grc_review_status)
+
   return (
     <div className="space-y-6">
       {/* KPI Header Card */}
@@ -522,8 +638,22 @@ export default function KpiExecutionClient(props: {
                 )}`}
               >
                 <span className="w-2 h-2 rounded-full mr-2 bg-current opacity-60" />
-                {autoStatusLabel(execution.auto_status)}
+                {autoStatusLabel(execution.auto_status, kpi.target_operator)}
               </span>
+
+              {/* ✅ NOVO: status de revisão (se existir no payload) */}
+              {execReviewStatus ? (
+                <div className="mt-2">
+                  <span
+                    className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${reviewStatusBadgeClass(
+                      execReviewStatus
+                    )}`}
+                    title="Status de revisão GRC"
+                  >
+                    {reviewStatusLabel(execReviewStatus)}
+                  </span>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -596,35 +726,36 @@ export default function KpiExecutionClient(props: {
                 {/* Status calculado (AO VIVO) */}
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700">Status Calculado</label>
-                  <div
-                    className={`h-[50px] flex items-center px-4 rounded-lg border font-medium ${autoStatusBoxClass(
-                      liveStatus
-                    )}`}
-                  >
+                  <div className={`h-[50px] flex items-center px-4 rounded-lg border font-medium ${autoStatusBoxClass(liveStatus)}`}>
                     <CheckCircle2 className="w-4 h-4 mr-2 opacity-80" />
-                    {autoStatusLabel(liveStatus)}
+                    {autoStatusLabel(liveStatus, activeTargetOperator)}
                   </div>
                   <p className="text-xs text-slate-400">
-                    Regra atual: buffer{" "}
-                    {(
-                      ((typeof (kpi as any).warning_buffer_pct === "number"
-                        ? (kpi as any).warning_buffer_pct
-                        : 0.05) as number) * 100
-                    ).toFixed(0)}
-                    %. {isActive ? "" : "KPI desativado (is_active=false): meta ignorada."}
+                    Faixa de warning: meta até{" "}
+                    {(((finiteNumberOrNull((kpi as any).warning_buffer_pct) ?? 0.05) as number) * 100).toFixed(0)}.{" "}
+                    {isActive ? "" : "KPI desativado (is_active=false): meta ignorada."}
                   </p>
                 </div>
               </div>
 
-              {/* ✅ obrigatório quando abaixo da meta */}
+              {/* obrigatório quando fora da meta */}
               {shouldRequireActionPlan ? (
                 <div className="rounded-xl border border-red-200 bg-red-50 p-4">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-bold text-red-800">KPI abaixo da meta</p>
-                      <p className="text-sm text-red-700 mt-0.5">
-                        É obrigatório registrar um plano de ação, pois este KPI está abaixo da meta esperada.
+                      <p className="text-sm font-bold text-red-800">
+                        KPI {autoStatusLabel("out_of_target", activeTargetOperator).toLowerCase()}
                       </p>
+                      <p className="text-sm text-red-700 mt-0.5">
+                        É obrigatório registrar um plano de ação, pois este KPI está{" "}
+                        {autoStatusLabel("out_of_target", activeTargetOperator).toLowerCase()} esperada.
+                      </p>
+
+                      {actionPlanRegistered ? (
+                        <p className="text-xs text-red-700/80 mt-1">
+                          Já existe plano de ação cadastrado para este mês — você pode salvar o KPI.
+                        </p>
+                      ) : null}
                     </div>
 
                     <button
@@ -638,69 +769,6 @@ export default function KpiExecutionClient(props: {
                   </div>
                 </div>
               ) : null}
-
-              {/* Planos de ação vinculados ao KPI */}
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700">Planos de Ação Vinculados</label>
-                <div className="rounded-xl border border-slate-200 bg-slate-50/50 overflow-hidden">
-                  {actionPlans.length === 0 ? (
-                    <div className="p-6 text-center text-slate-500 text-sm">
-                      Nenhum plano de ação vinculado a este KPI.
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-slate-100">
-                      {actionPlans.map((ap) => (
-                        <Link
-                          key={ap.id}
-                          href={`/action-plans/${ap.id}`}
-                          className="flex flex-col md:flex-row md:items-center gap-3 p-4 hover:bg-slate-100/80 transition-colors"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <ClipboardList className="w-4 h-4 text-slate-400 shrink-0" />
-                              <span className="font-medium text-slate-900 truncate">{ap.title}</span>
-                            </div>
-                            {ap.responsible_name ? (
-                              <p className="text-xs text-slate-500 mt-0.5">Responsável: {ap.responsible_name}</p>
-                            ) : null}
-                          </div>
-                          <div className="flex flex-col items-end gap-1.5">
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                (ap.status || "").toLowerCase() === "done"
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : (ap.status || "").toLowerCase() === "in_progress"
-                                    ? "bg-amber-100 text-amber-700"
-                                    : (ap.status || "").toLowerCase() === "blocked"
-                                      ? "bg-red-100 text-red-700"
-                                      : "bg-slate-100 text-slate-600"
-                              }`}
-                            >
-                              {(ap.status || "").toLowerCase() === "done"
-                                ? "Concluído"
-                                : (ap.status || "").toLowerCase() === "in_progress"
-                                  ? "Em andamento"
-                                  : (ap.status || "").toLowerCase() === "blocked"
-                                    ? "Bloqueado"
-                                    : (ap.status || "").toLowerCase() === "not_started"
-                                      ? "A fazer"
-                                      : ap.status || "—"}
-                            </span>
-                            {ap.priority ? (
-                              <span className="text-xs text-slate-500">Prioridade: {ap.priority}</span>
-                            ) : null}
-                            {ap.due_date ? (
-                              <span className="text-xs text-slate-500">
-                                Prazo: {formatDatePtBr(ap.due_date)}
-                              </span>
-                            ) : null}
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
 
               {/* Evidência (placeholder) */}
               <div className="space-y-2">
@@ -766,14 +834,44 @@ export default function KpiExecutionClient(props: {
               </div>
 
               <div className="pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  className="w-full py-2 flex items-center justify-center gap-2 text-primary font-medium hover:bg-primary/5 rounded-lg transition-colors"
-                  title="Placeholder"
-                >
-                  <Download className="w-4 h-4" />
-                  Baixar Guia de Medição (placeholder)
-                </button>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Régua de Tolerância</p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between text-slate-700">
+                    <span className="inline-flex items-center gap-2">
+                      <Circle className="w-2.5 h-2.5 fill-emerald-500 text-emerald-500" />
+                      Conforme (Green)
+                    </span>
+                    <span className="font-semibold">
+                      {activeTargetOperator === "gte" || activeTargetOperator === ">="
+                        ? `>= ${activeTargetValue ?? "—"}%`
+                        : `<= ${activeTargetValue ?? "—"}%`}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-slate-700">
+                    <span className="inline-flex items-center gap-2">
+                      <Circle className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                      Atenção (Warning)
+                    </span>
+                    <span className="font-semibold">
+                      {toleranceWarningPct !== null && Number.isFinite(toleranceWarningPct)
+                        ? `${Math.max(0, toleranceWarningPct).toFixed(0)}% - ${activeTargetValue ?? "—"}%`
+                        : "Faixa configurada"}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-slate-700">
+                    <span className="inline-flex items-center gap-2">
+                      <Circle className="w-2.5 h-2.5 fill-red-500 text-red-500" />
+                      Crítico (Critical)
+                    </span>
+                    <span className="font-semibold">
+                      {activeTargetOperator === "gte" || activeTargetOperator === ">="
+                        ? `< ${toleranceWarningPct ?? "—"}%`
+                        : `> ${toleranceWarningPct ?? "—"}%`}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -787,6 +885,64 @@ export default function KpiExecutionClient(props: {
             <div className="flex items-center gap-3 bg-white/10 p-3 rounded-lg backdrop-blur-sm">
               <span className="font-bold">{formatMonthLabel(mes_ref_used)}</span>
             </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Plano de Ação</h3>
+              <Link
+                href={`/action-plans?kpi_id=${encodeURIComponent(kpi.kpi_id)}`}
+                className="text-xs font-semibold text-primary hover:underline"
+              >
+                Ver todos
+              </Link>
+            </div>
+
+            {actionPlans.length === 0 ? (
+              <div className="rounded-lg border border-rose-100 bg-rose-50 p-3">
+                <p className="text-xs font-bold text-rose-600">Pendente: Revisão de Processo</p>
+                <p className="mt-1 text-[11px] text-rose-500">
+                  Crie um novo plano para acompanhamento do desvio identificado.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {actionPlans.slice(0, 3).map((ap) => (
+                  <Link
+                    key={ap.id}
+                    href={`/action-plans/${encodeURIComponent(ap.id)}`}
+                    className="block rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors p-3"
+                    title={`Abrir plano ${ap.title}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-bold text-slate-800 line-clamp-1">{ap.title || "Sem título"}</p>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[10px] font-semibold ${actionPlanStatusBadge(
+                          ap.status
+                        )}`}
+                      >
+                        {actionPlanStatusLabel(ap.status)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-500 line-clamp-2">
+                      {ap.description?.trim() || "Sem descrição."}
+                    </p>
+                    <div className="mt-2 text-[11px] text-slate-500">
+                      {ap.due_date ? `Prazo: ${formatDatePtBr(ap.due_date)}` : "Prazo: —"}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={openActionPlanModal}
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-500 hover:bg-slate-50"
+            >
+              <Plus className="w-4 h-4" />
+              Novo Plano
+            </button>
           </div>
         </div>
       </div>
@@ -818,7 +974,8 @@ export default function KpiExecutionClient(props: {
             <div className="p-5 space-y-4">
               {shouldRequireActionPlan ? (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                  É obrigatório registrar um plano de ação, pois este KPI está abaixo da meta esperada.
+                  É obrigatório registrar um plano de ação, pois este KPI está{" "}
+                  {autoStatusLabel("out_of_target", activeTargetOperator).toLowerCase()} esperada.
                 </div>
               ) : null}
 
@@ -985,8 +1142,8 @@ export default function KpiExecutionClient(props: {
                       {metaType === "percent"
                         ? "Dica: use 98 para 98%."
                         : metaType === "number"
-                        ? "Use número normal."
-                        : "Escolha Sim/Não."}
+                          ? "Use número normal."
+                          : "Escolha Sim/Não."}
                     </p>
                   )}
                 </div>
@@ -1044,26 +1201,17 @@ export default function KpiExecutionClient(props: {
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-slate-500 uppercase">Prévia do cálculo</p>
                     <p className="text-sm text-slate-700 mt-1">
-                      Operador: <span className="font-mono">{direction === "yes_no" ? "boolean" : previewOperator}</span> •
-                      Meta:{" "}
+                      Operador: <span className="font-mono">{direction === "yes_no" ? "boolean" : previewOperator}</span> • Meta:{" "}
                       <span className="font-mono">
-                        {metaType === "boolean"
-                          ? safe(targetText) === "0"
-                            ? "Não"
-                            : "Sim"
-                          : targetNumericDraft ?? "—"}
+                        {metaType === "boolean" ? (safe(targetText) === "0" ? "Não" : "Sim") : targetNumericDraft ?? "—"}
                       </span>{" "}
                       • Warning: <span className="font-mono">{(warningPctDraft * 100).toFixed(1)}%</span>
                     </p>
                     <p className="text-xs text-slate-500 mt-1">Obs: a prévia usa o valor do campo “Resultado Alcançado”.</p>
                   </div>
 
-                  <div
-                    className={`shrink-0 h-[42px] px-4 rounded-lg border flex items-center font-semibold ${autoStatusBoxClass(
-                      previewStatus
-                    )}`}
-                  >
-                    {autoStatusLabel(previewStatus)}
+                  <div className={`shrink-0 h-[42px] px-4 rounded-lg border flex items-center font-semibold ${autoStatusBoxClass(previewStatus)}`}>
+                    {autoStatusLabel(previewStatus, previewOperator)}
                   </div>
                 </div>
 
@@ -1127,7 +1275,7 @@ export default function KpiExecutionClient(props: {
                 <th className="ui-table-th px-6 py-4">Valor</th>
                 <th className="ui-table-th px-6 py-4">Status</th>
                 <th className="ui-table-th px-6 py-4">Data registro</th>
-                <th className="ui-table-th px-6 py-4 text-center">Ações</th>
+                <th className="ui-table-th px-6 py-4 text-left">Ações</th>
               </tr>
             </thead>
 
@@ -1148,17 +1296,11 @@ export default function KpiExecutionClient(props: {
                       {h.result_numeric === null || h.result_numeric === undefined ? "—" : h.result_numeric}
                     </td>
                     <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${autoStatusBadge(
-                          h.auto_status
-                        )}`}
-                      >
-                        {autoStatusLabel(h.auto_status)}
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${autoStatusBadge(h.auto_status)}`}>
+                        {autoStatusLabel(h.auto_status, kpi.target_operator)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-slate-500">
-                      {h.created_at ? formatDatePtBr(h.created_at) : "—"}
-                    </td>
+                    <td className="px-6 py-4 text-slate-500">{h.created_at ? formatDatePtBr(h.created_at) : "—"}</td>
                     <td className="px-6 py-4 text-right">
                       <Link
                         className="text-primary hover:text-blue-700 font-medium text-sm inline-flex items-center gap-1 justify-end"
@@ -1189,5 +1331,3 @@ export default function KpiExecutionClient(props: {
     </div>
   )
 }
-
-

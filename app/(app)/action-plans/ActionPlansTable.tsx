@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation"
 import { CalendarDays } from "lucide-react"
 import { formatDatePtBr } from "@/lib/utils"
 import type { ActionPlanListRow } from "./actions-list"
+import TablePaginationFooter from "../components/TablePaginationFooter"
 
 function statusPill(s?: string | null) {
   const v = (s || "").toLowerCase()
@@ -77,14 +78,12 @@ function sanitizeActionDescription(description?: string | null) {
 export default function ActionPlansTable({
   rows,
   page,
-  perPage,
   total,
   showingFrom,
   showingTo,
 }: {
   rows: ActionPlanListRow[]
   page: number
-  perPage: number
   total: number
   showingFrom: number
   showingTo: number
@@ -105,7 +104,7 @@ export default function ActionPlansTable({
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-[#E6ECF5] text-sm text-[#0F172A]">
+          <tbody className="ui-table-tbody divide-y divide-[#E6ECF5] text-sm text-[#0F172A]">
             {rows.length === 0 ? (
               <tr>
                 <td className="px-6 py-8 text-sm text-[#475569]" colSpan={5}>
@@ -175,7 +174,7 @@ export default function ActionPlansTable({
 
                     <td className="px-6 py-5">
                       <div
-                        className={`flex items-center gap-1.5 ${
+                        className={`flex items-center gap-1.5 text-xs ${
                           overdueRow ? "font-semibold text-[#EF4444]" : "text-[#475569]"
                         }`}
                       >
@@ -239,44 +238,14 @@ export default function ActionPlansTable({
         </table>
       </div>
 
-      {/* Pagination */}
-      <div className="flex items-center justify-between border-t border-[#E6ECF5] bg-[#F6F8FC] px-6 py-4">
-        <span className="text-xs font-medium text-[#475569]">
-          Mostrando {showingFrom}–{showingTo} de {total} resultados
-        </span>
-
-        <div className="flex items-center gap-2">
-          <button
-            className="cursor-not-allowed rounded border border-[#E6ECF5] bg-white px-3 py-1 text-xs font-bold text-[#64748B]"
-            disabled
-          >
-            Anterior
-          </button>
-
-          <button className="rounded border border-[#06B6D4] bg-[#06B6D4] px-3 py-1 text-xs font-bold text-white">
-            {page}
-          </button>
-
-          {total > perPage ? (
-            <>
-              <button className="rounded border border-[#E6ECF5] bg-white px-3 py-1 text-xs font-bold text-[#475569] transition-colors hover:bg-[rgba(6,182,212,0.08)] hover:text-[#06B6D4]">
-                2
-              </button>
-              <button className="rounded border border-[#E6ECF5] bg-white px-3 py-1 text-xs font-bold text-[#475569] transition-colors hover:bg-[rgba(6,182,212,0.08)] hover:text-[#06B6D4]">
-                3
-              </button>
-            </>
-          ) : null}
-
-          <button
-            type="button"
-            className="rounded border border-[#E6ECF5] bg-white px-3 py-1 text-xs font-bold text-[#475569] transition-colors hover:bg-[rgba(6,182,212,0.08)] hover:text-[#06B6D4]"
-            title="Próximo (placeholder)"
-          >
-            Próximo
-          </button>
-        </div>
-      </div>
+      <TablePaginationFooter
+        from={showingFrom}
+        to={showingTo}
+        total={total}
+        page={page}
+        prevHref={null}
+        nextHref={null}
+      />
     </div>
   )
 }
