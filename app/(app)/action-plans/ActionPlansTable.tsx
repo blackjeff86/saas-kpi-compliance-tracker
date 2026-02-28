@@ -81,12 +81,16 @@ export default function ActionPlansTable({
   total,
   showingFrom,
   showingTo,
+  prevHref,
+  nextHref,
 }: {
   rows: ActionPlanListRow[]
   page: number
   total: number
   showingFrom: number
   showingTo: number
+  prevHref: string | null
+  nextHref: string | null
 }) {
   const router = useRouter()
   const detailHref = (id: string) => `/action-plans/${id}`
@@ -247,8 +251,8 @@ export default function ActionPlansTable({
         to={showingTo}
         total={total}
         page={page}
-        prevHref={null}
-        nextHref={null}
+        prevHref={prevHref}
+        nextHref={nextHref}
       />
     </div>
   )

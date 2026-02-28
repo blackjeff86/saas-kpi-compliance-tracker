@@ -3,30 +3,11 @@ import Link from "next/link"
 import PageContainer from "../PageContainer"
 import PageHeader from "../PageHeader"
 import ActionPlansFilters from "./ActionPlansFilters"
-import { fetchActionPlans, fetchActionPlansFilterOptions, type ActionPlanListRow } from "./actions-list"
+import { fetchActionPlansFilterOptions, fetchActionPlansPage, fetchActionPlansSummary } from "./actions-list"
 import { ClipboardList, Timer, AlertTriangle, BadgeCheck } from "lucide-react"
 import ActionPlansTable from "./ActionPlansTable"
 import NewActionPlanModal from "./NewActionPlanModal"
 import { fetchOriginOptions } from "./actions-create"
-
-function safeDate(v?: string | null) {
-  if (!v) return null
-  const d = new Date(v)
-  if (Number.isNaN(d.getTime())) return null
-  return d
-}
-
-function isOverdue(row: ActionPlanListRow) {
-  const d = safeDate(row.due_date ?? null)
-  if (!d) return false
-  const status = (row.status || "").toLowerCase()
-  if (status === "done") return false
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const dd = new Date(d)
-  dd.setHours(0, 0, 0, 0)
-  return dd.getTime() < today.getTime()
-}
 
 function getQueryValue(
   searchParams: { [key: string]: string | string[] | undefined } | undefined,
@@ -40,6 +21,21 @@ function getQueryValue(
 
 type PageSearchParams = { [key: string]: string | string[] | undefined }
 
+function clampInt(v: string | undefined, def: number, min: number, max: number) {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return def
+  return Math.max(min, Math.min(max, Math.floor(n)))
+}
+
+function buildHref(params: Record<string, string>, page: number) {
+  const s = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => {
+    if (v) s.set(k, v)
+  })
+  s.set("page", String(page))
+  return `/action-plans?${s.toString()}`
+}
+
 export default async function ActionPlansPage(props: {
   searchParams?: PageSearchParams | Promise<PageSearchParams | undefined>
 }) {
@@ -50,25 +46,38 @@ export default async function ActionPlansPage(props: {
   const responsible = getQueryValue(searchParams, "responsible")
   const status = getQueryValue(searchParams, "status")
   const priority = getQueryValue(searchParams, "priority")
+  const page = clampInt(getQueryValue(searchParams, "page"), 1, 1, 99999)
+  const pageSize = 10
+  const offset = (page - 1) * pageSize
 
-  const [rows, filterOptions, originOptions] = await Promise.all([
-    fetchActionPlans({ riskId, framework, responsible, status, priority }),
+  const [{ rows, total }, summary, filterOptions, originOptions] = await Promise.all([
+    fetchActionPlansPage({ riskId, framework, responsible, status, priority, limit: pageSize, offset }),
+    fetchActionPlansSummary({ riskId, framework, responsible, status, priority }),
     fetchActionPlansFilterOptions(),
     fetchOriginOptions(),
   ])
 
-  const total = rows.length
-  const inProgress = rows.filter((r) => (r.status || "").toLowerCase() === "in_progress").length
-  const overdue = rows.filter((r) => isOverdue(r)).length
-  const done = rows.filter((r) => (r.status || "").toLowerCase() === "done").length
+  const inProgress = summary.in_progress
+  const overdue = summary.overdue
+  const done = summary.done
 
-  const complianceIndex = total > 0 ? (done / total) * 100 : 0
+  const complianceIndex = summary.total > 0 ? (done / summary.total) * 100 : 0
   const complianceLabel = `${complianceIndex.toFixed(1)}%`
 
-  // Paginação (UI placeholder)
-  const page = 1
-  const showingFrom = total === 0 ? 0 : 1
-  const showingTo = total
+  const showingFrom = total === 0 ? 0 : offset + 1
+  const showingTo = Math.min(offset + rows.length, total)
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  const baseParams: Record<string, string> = {
+    risk: riskId ?? "",
+    framework: framework ?? "",
+    responsible: responsible ?? "",
+    status: status ?? "",
+    priority: priority ?? "",
+  }
+
+  const prevHref = page <= 1 ? null : buildHref(baseParams, page - 1)
+  const nextHref = page >= totalPages ? null : buildHref(baseParams, page + 1)
 
   return (
     <PageContainer variant="default">
@@ -162,6 +171,8 @@ export default async function ActionPlansPage(props: {
           total={total}
           showingFrom={showingFrom}
           showingTo={showingTo}
+          prevHref={prevHref}
+          nextHref={nextHref}
         />
 
         <div className="text-xs text-text-muted">

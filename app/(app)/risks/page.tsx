@@ -4,9 +4,8 @@ import SetPageTitle from "../components/SetPageTitle"
 import PageContainer from "../PageContainer"
 import {
   fetchRisksFilterOptions,
-  fetchRiskCountsByClassification,
   fetchRisks,
-  fetchRiskHeatmapMatrix,
+  fetchRiskAnalytics,
 } from "./actions"
 import { DEFAULT_SOURCES, DEFAULT_NATUREZAS } from "./constants"
 import FiltersBar from "./FiltersBar"
@@ -77,12 +76,13 @@ export default async function RisksPage(props: {
     natureza: natureza || undefined,
   }
 
-  const [opts, { rows, total }, counts, heatmap] = await Promise.all([
+  const [opts, { rows, total }, analytics] = await Promise.all([
     fetchRisksFilterOptions(),
     fetchRisks({ ...filterOpts, limit: pageSize, offset }),
-    fetchRiskCountsByClassification(filterOpts),
-    fetchRiskHeatmapMatrix(filterOpts),
+    fetchRiskAnalytics(filterOpts),
   ])
+  const counts = analytics.counts
+  const heatmap = analytics.heatmap
 
   const from = total === 0 ? 0 : offset + 1
   const to = Math.min(offset + rows.length, total)

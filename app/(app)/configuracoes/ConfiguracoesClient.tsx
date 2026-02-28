@@ -3,8 +3,8 @@
 
 import { useMemo, useState, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
+import dynamic from "next/dynamic"
 import { Button } from "@/components/ui/button"
-import RbacClient from "../admin/rbac/RbacClient"
 import SetPageTitle from "../components/SetPageTitle"
 
 type TabKey = "empresa" | "permissoes" | "integracoes"
@@ -41,6 +41,14 @@ type IntegrationStatus = "connected" | "available" | "soon"
 type ConfiguracoesClientProps = {
   hasRbacPermission?: boolean
 }
+
+const RbacClient = dynamic(() => import("../admin/rbac/RbacClient"), {
+  loading: () => (
+    <div className="rounded-xl border bg-white p-8 text-center text-slate-500">
+      Carregando permissões...
+    </div>
+  ),
+})
 
 export default function ConfiguracoesClient({ hasRbacPermission = false }: ConfiguracoesClientProps) {
   const searchParams = useSearchParams()

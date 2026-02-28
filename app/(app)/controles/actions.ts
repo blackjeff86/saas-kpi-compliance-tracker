@@ -2,9 +2,18 @@
 "use server"
 
 import { sql } from "@vercel/postgres"
+import { unstable_cache } from "next/cache"
 import { getContext } from "../lib/context"
 import { getControlsScope } from "../lib/authz"
 import { ensureTeamIdColumns } from "../lib/rbac-migrations"
+
+let ensureTeamIdColumnsPromise: Promise<void> | null = null
+async function ensureTeamIdColumnsOnce() {
+  if (!ensureTeamIdColumnsPromise) {
+    ensureTeamIdColumnsPromise = ensureTeamIdColumns()
+  }
+  await ensureTeamIdColumnsPromise
+}
 
 // =============================
 // TYPES
@@ -71,56 +80,64 @@ export async function fetchControlsFilterOptions(): Promise<{
   focals: { name: string; email: string }[]
 }> {
   const ctx = await getContext()
-  await ensureTeamIdColumns()
+  await ensureTeamIdColumnsOnce()
   const scope = await getControlsScope(ctx.tenantId, ctx.userId)
   const teamIdsArr = scope.teamIds
   const noScope = scope.canViewAll || teamIdsArr.length === 0
   const oneTeam = !noScope && teamIdsArr.length === 1
   const firstTeamId = teamIdsArr[0] ?? null
   const teamsArray = teamIdsArr as unknown as string
+  const scopeKey = noScope ? "all" : oneTeam ? `one:${firstTeamId}` : `many:${teamIdsArr.slice().sort().join(",")}`
+  const cached = unstable_cache(
+    async () => {
+      const monthsRes = await sql<{ v: string }>`
+        SELECT to_char(d::date, 'YYYY-MM') AS v
+        FROM generate_series(date '2026-01-01', date '2027-12-01', interval '1 month') AS d
+        ORDER BY v DESC
+      `
 
-  const monthsRes = await sql<{ v: string }>`
-    SELECT to_char(d::date, 'YYYY-MM') AS v
-    FROM generate_series(date '2026-01-01', date '2027-12-01', interval '1 month') AS d
-    ORDER BY v DESC
-  `
+      const [fw, fr, rk, owners, focals] = noScope
+        ? await Promise.all([
+            sql<{ name: string }>`SELECT DISTINCT f.name FROM frameworks f JOIN controls c ON c.framework_id = f.id AND c.tenant_id = ${ctx.tenantId} WHERE f.tenant_id = ${ctx.tenantId} AND f.name IS NOT NULL AND btrim(f.name) <> '' ORDER BY f.name`,
+            sql<{ v: string }>`SELECT DISTINCT c.frequency::text AS v FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND c.frequency IS NOT NULL ORDER BY v`,
+            sql<{ v: string }>`SELECT DISTINCT r.classification::text AS v FROM controls c LEFT JOIN risk_catalog r ON r.id = c.risk_id WHERE c.tenant_id = ${ctx.tenantId} AND r.classification IS NOT NULL ORDER BY v`,
+            sql<{ name: string; email: string }>`SELECT DISTINCT COALESCE(NULLIF(btrim(c.control_owner_name), ''), '—')::text AS name, COALESCE(NULLIF(btrim(c.control_owner_email), ''), '—')::text AS email FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (COALESCE(NULLIF(btrim(c.control_owner_name), ''), NULL) IS NOT NULL OR COALESCE(NULLIF(btrim(c.control_owner_email), ''), NULL) IS NOT NULL) ORDER BY name, email`,
+            sql<{ name: string; email: string }>`SELECT DISTINCT COALESCE(NULLIF(btrim(c.focal_point_name), ''), '—')::text AS name, COALESCE(NULLIF(btrim(c.focal_point_email), ''), '—')::text AS email FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (COALESCE(NULLIF(btrim(c.focal_point_name), ''), NULL) IS NOT NULL OR COALESCE(NULLIF(btrim(c.focal_point_email), ''), NULL) IS NOT NULL) ORDER BY name, email`,
+          ])
+        : oneTeam
+          ? await Promise.all([
+              sql<{ name: string }>`SELECT DISTINCT f.name FROM frameworks f JOIN controls c ON c.framework_id = f.id AND c.tenant_id = ${ctx.tenantId} WHERE f.tenant_id = ${ctx.tenantId} AND f.name IS NOT NULL AND btrim(f.name) <> '' AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid) ORDER BY f.name`,
+              sql<{ v: string }>`SELECT DISTINCT c.frequency::text AS v FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid) AND c.frequency IS NOT NULL ORDER BY v`,
+              sql<{ v: string }>`SELECT DISTINCT r.classification::text AS v FROM controls c LEFT JOIN risk_catalog r ON r.id = c.risk_id WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid) AND r.classification IS NOT NULL ORDER BY v`,
+              sql<{ name: string; email: string }>`SELECT DISTINCT COALESCE(NULLIF(btrim(c.control_owner_name), ''), '—')::text AS name, COALESCE(NULLIF(btrim(c.control_owner_email), ''), '—')::text AS email FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid) AND (COALESCE(NULLIF(btrim(c.control_owner_name), ''), NULL) IS NOT NULL OR COALESCE(NULLIF(btrim(c.control_owner_email), ''), NULL) IS NOT NULL) ORDER BY name, email`,
+              sql<{ name: string; email: string }>`SELECT DISTINCT COALESCE(NULLIF(btrim(c.focal_point_name), ''), '—')::text AS name, COALESCE(NULLIF(btrim(c.focal_point_email), ''), '—')::text AS email FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid) AND (COALESCE(NULLIF(btrim(c.focal_point_name), ''), NULL) IS NOT NULL OR COALESCE(NULLIF(btrim(c.focal_point_email), ''), NULL) IS NOT NULL) ORDER BY name, email`,
+            ])
+          : await Promise.all([
+              sql<{ name: string }>`SELECT DISTINCT f.name FROM frameworks f JOIN controls c ON c.framework_id = f.id AND c.tenant_id = ${ctx.tenantId} WHERE f.tenant_id = ${ctx.tenantId} AND f.name IS NOT NULL AND btrim(f.name) <> '' AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[])) ORDER BY f.name`,
+              sql<{ v: string }>`SELECT DISTINCT c.frequency::text AS v FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[])) AND c.frequency IS NOT NULL ORDER BY v`,
+              sql<{ v: string }>`SELECT DISTINCT r.classification::text AS v FROM controls c LEFT JOIN risk_catalog r ON r.id = c.risk_id WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[])) AND r.classification IS NOT NULL ORDER BY v`,
+              sql<{ name: string; email: string }>`SELECT DISTINCT COALESCE(NULLIF(btrim(c.control_owner_name), ''), '—')::text AS name, COALESCE(NULLIF(btrim(c.control_owner_email), ''), '—')::text AS email FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[])) AND (COALESCE(NULLIF(btrim(c.control_owner_name), ''), NULL) IS NOT NULL OR COALESCE(NULLIF(btrim(c.control_owner_email), ''), NULL) IS NOT NULL) ORDER BY name, email`,
+              sql<{ name: string; email: string }>`SELECT DISTINCT COALESCE(NULLIF(btrim(c.focal_point_name), ''), '—')::text AS name, COALESCE(NULLIF(btrim(c.focal_point_email), ''), '—')::text AS email FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[])) AND (COALESCE(NULLIF(btrim(c.focal_point_name), ''), NULL) IS NOT NULL OR COALESCE(NULLIF(btrim(c.focal_point_email), ''), NULL) IS NOT NULL) ORDER BY name, email`,
+            ])
 
-  const [fw, fr, rk, owners, focals] = noScope
-    ? await Promise.all([
-        sql<{ name: string }>`SELECT DISTINCT f.name FROM frameworks f JOIN controls c ON c.framework_id = f.id AND c.tenant_id = ${ctx.tenantId} WHERE f.tenant_id = ${ctx.tenantId} AND f.name IS NOT NULL AND btrim(f.name) <> '' ORDER BY f.name`,
-        sql<{ v: string }>`SELECT DISTINCT c.frequency::text AS v FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND c.frequency IS NOT NULL ORDER BY v`,
-        sql<{ v: string }>`SELECT DISTINCT r.classification::text AS v FROM controls c LEFT JOIN risk_catalog r ON r.id = c.risk_id WHERE c.tenant_id = ${ctx.tenantId} AND r.classification IS NOT NULL ORDER BY v`,
-        sql<{ name: string; email: string }>`SELECT DISTINCT COALESCE(NULLIF(btrim(c.control_owner_name), ''), '—')::text AS name, COALESCE(NULLIF(btrim(c.control_owner_email), ''), '—')::text AS email FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (COALESCE(NULLIF(btrim(c.control_owner_name), ''), NULL) IS NOT NULL OR COALESCE(NULLIF(btrim(c.control_owner_email), ''), NULL) IS NOT NULL) ORDER BY name, email`,
-        sql<{ name: string; email: string }>`SELECT DISTINCT COALESCE(NULLIF(btrim(c.focal_point_name), ''), '—')::text AS name, COALESCE(NULLIF(btrim(c.focal_point_email), ''), '—')::text AS email FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (COALESCE(NULLIF(btrim(c.focal_point_name), ''), NULL) IS NOT NULL OR COALESCE(NULLIF(btrim(c.focal_point_email), ''), NULL) IS NOT NULL) ORDER BY name, email`,
-      ])
-    : oneTeam
-      ? await Promise.all([
-          sql<{ name: string }>`SELECT DISTINCT f.name FROM frameworks f JOIN controls c ON c.framework_id = f.id AND c.tenant_id = ${ctx.tenantId} WHERE f.tenant_id = ${ctx.tenantId} AND f.name IS NOT NULL AND btrim(f.name) <> '' AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid) ORDER BY f.name`,
-          sql<{ v: string }>`SELECT DISTINCT c.frequency::text AS v FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid) AND c.frequency IS NOT NULL ORDER BY v`,
-          sql<{ v: string }>`SELECT DISTINCT r.classification::text AS v FROM controls c LEFT JOIN risk_catalog r ON r.id = c.risk_id WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid) AND r.classification IS NOT NULL ORDER BY v`,
-          sql<{ name: string; email: string }>`SELECT DISTINCT COALESCE(NULLIF(btrim(c.control_owner_name), ''), '—')::text AS name, COALESCE(NULLIF(btrim(c.control_owner_email), ''), '—')::text AS email FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid) AND (COALESCE(NULLIF(btrim(c.control_owner_name), ''), NULL) IS NOT NULL OR COALESCE(NULLIF(btrim(c.control_owner_email), ''), NULL) IS NOT NULL) ORDER BY name, email`,
-          sql<{ name: string; email: string }>`SELECT DISTINCT COALESCE(NULLIF(btrim(c.focal_point_name), ''), '—')::text AS name, COALESCE(NULLIF(btrim(c.focal_point_email), ''), '—')::text AS email FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid) AND (COALESCE(NULLIF(btrim(c.focal_point_name), ''), NULL) IS NOT NULL OR COALESCE(NULLIF(btrim(c.focal_point_email), ''), NULL) IS NOT NULL) ORDER BY name, email`,
-        ])
-      : await Promise.all([
-          sql<{ name: string }>`SELECT DISTINCT f.name FROM frameworks f JOIN controls c ON c.framework_id = f.id AND c.tenant_id = ${ctx.tenantId} WHERE f.tenant_id = ${ctx.tenantId} AND f.name IS NOT NULL AND btrim(f.name) <> '' AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[])) ORDER BY f.name`,
-          sql<{ v: string }>`SELECT DISTINCT c.frequency::text AS v FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[])) AND c.frequency IS NOT NULL ORDER BY v`,
-          sql<{ v: string }>`SELECT DISTINCT r.classification::text AS v FROM controls c LEFT JOIN risk_catalog r ON r.id = c.risk_id WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[])) AND r.classification IS NOT NULL ORDER BY v`,
-          sql<{ name: string; email: string }>`SELECT DISTINCT COALESCE(NULLIF(btrim(c.control_owner_name), ''), '—')::text AS name, COALESCE(NULLIF(btrim(c.control_owner_email), ''), '—')::text AS email FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[])) AND (COALESCE(NULLIF(btrim(c.control_owner_name), ''), NULL) IS NOT NULL OR COALESCE(NULLIF(btrim(c.control_owner_email), ''), NULL) IS NOT NULL) ORDER BY name, email`,
-          sql<{ name: string; email: string }>`SELECT DISTINCT COALESCE(NULLIF(btrim(c.focal_point_name), ''), '—')::text AS name, COALESCE(NULLIF(btrim(c.focal_point_email), ''), '—')::text AS email FROM controls c WHERE c.tenant_id = ${ctx.tenantId} AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[])) AND (COALESCE(NULLIF(btrim(c.focal_point_name), ''), NULL) IS NOT NULL OR COALESCE(NULLIF(btrim(c.focal_point_email), ''), NULL) IS NOT NULL) ORDER BY name, email`,
-        ])
+      return {
+        months: monthsRes.rows.map((r) => r.v),
+        frameworks: fw.rows.map((r) => r.name),
+        frequencies: fr.rows.map((r) => r.v),
+        risks: rk.rows.map((r) => r.v),
+        owners: owners.rows
+          .filter((r) => r.name !== "—" || r.email !== "—")
+          .map((r) => ({ name: r.name, email: r.email })),
+        focals: focals.rows
+          .filter((r) => r.name !== "—" || r.email !== "—")
+          .map((r) => ({ name: r.name, email: r.email })),
+      }
+    },
+    ["controls-filter-options", ctx.tenantId, ctx.userId, scopeKey],
+    { revalidate: 300 }
+  )
 
-  return {
-    months: monthsRes.rows.map((r) => r.v),
-    frameworks: fw.rows.map((r) => r.name),
-    frequencies: fr.rows.map((r) => r.v),
-    risks: rk.rows.map((r) => r.v),
-    owners: owners.rows
-      .filter((r) => r.name !== "—" || r.email !== "—")
-      .map((r) => ({ name: r.name, email: r.email })),
-    focals: focals.rows
-      .filter((r) => r.name !== "—" || r.email !== "—")
-      .map((r) => ({ name: r.name, email: r.email })),
-  }
+  return cached()
 }
 
 // =============================
@@ -131,7 +148,7 @@ export async function fetchControlsPage(
   input: FetchControlsInput = {}
 ): Promise<{ rows: ControlRow[]; total: number }> {
   const ctx = await getContext()
-  await ensureTeamIdColumns()
+  await ensureTeamIdColumnsOnce()
   const scope = await getControlsScope(ctx.tenantId, ctx.userId)
   const teamIdsArr = scope.teamIds
   const noScope = scope.canViewAll || teamIdsArr.length === 0
@@ -471,29 +488,192 @@ export type ControlsSummary = {
 export async function fetchControlsSummary(
   input: Omit<FetchControlsInput, "limit" | "offset"> = {}
 ): Promise<ControlsSummary> {
-  const { rows } = await fetchControlsPage({
-    ...input,
-    // cards devem refletir a distribuição completa do resultado final (coluna "Resultado (mês)")
-    // e não apenas um resultado específico selecionado no filtro.
-    resultado: "",
-    limit: 0,
-    offset: 0,
-  })
-  const summary: ControlsSummary = {
-    total: rows.length,
-    effective: 0,
-    warning: 0,
-    critical: 0,
-    pending: 0,
-    overdue: 0,
-    not_applicable: 0,
-  }
-  for (const r of rows) {
-    const s = (r.control_result ?? "pending").toLowerCase()
-    if (s in summary) (summary as Record<string, number>)[s]++
-    else summary.pending++
-  }
-  return summary
+  const ctx = await getContext()
+  await ensureTeamIdColumnsOnce()
+  const scope = await getControlsScope(ctx.tenantId, ctx.userId)
+  const teamIdsArr = scope.teamIds
+  const noScope = scope.canViewAll || teamIdsArr.length === 0
+  const oneTeam = !noScope && teamIdsArr.length === 1
+  const firstTeamId = teamIdsArr[0] ?? null
+  const teamsArray = teamIdsArr as unknown as string
+
+  const qRaw = (input.q ?? "").trim()
+  const q = qRaw.length ? `%${qRaw}%` : null
+
+  const mes_ref = (input.mes_ref ?? "").trim()
+  const framework = (input.framework ?? "").trim()
+  const frequency = (input.frequency ?? "").trim()
+  const risk = (input.risk ?? "").trim()
+  const owner = (input.owner ?? "").trim()
+  const focal = (input.focal ?? "").trim()
+  const scopeKey = noScope ? "all" : oneTeam ? `one:${firstTeamId}` : `many:${teamIdsArr.slice().sort().join(",")}`
+  const filtersKey = JSON.stringify({ mes_ref, qRaw, framework, frequency, risk, owner, focal })
+
+  const cached = unstable_cache(
+    async (): Promise<ControlsSummary> => {
+      const summaryRes = await sql<{ status: string; count: number }>`
+        WITH selected_month AS (
+          SELECT
+            CASE
+              WHEN ${mes_ref} = '' THEN date_trunc('month', (now() AT TIME ZONE 'America/Sao_Paulo'))::date
+              ELSE to_date(${mes_ref} || '-01', 'YYYY-MM-DD')
+            END AS m
+        ),
+        current_month AS (
+          SELECT date_trunc('month', (now() AT TIME ZONE 'America/Sao_Paulo'))::date AS cm
+        ),
+        latest_exec_in_month AS (
+          SELECT DISTINCT ON (ke.kpi_id)
+            ke.kpi_id,
+            ke.auto_status::text AS auto_status,
+            lower(COALESCE(ke.grc_review_status::text, ke.workflow_status::text, 'pending')) AS review_status
+          FROM kpi_executions ke
+          CROSS JOIN selected_month sm
+          WHERE ke.tenant_id = ${ctx.tenantId}
+            AND ke.period_start IS NOT NULL
+            AND date_trunc('month', ke.period_start)::date = sm.m
+          ORDER BY ke.kpi_id, ke.period_start DESC, ke.created_at DESC
+        ),
+        kpi_month_status AS (
+          SELECT
+            c.id AS control_id,
+            CASE
+              WHEN NOT (
+                CASE
+                  WHEN lower(COALESCE(c.frequency::text,'')) IN ('daily','weekly','monthly','on_demand') THEN true
+                  WHEN lower(COALESCE(c.frequency::text,'')) IN ('quarterly') THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,4,7,11))
+                  WHEN lower(COALESCE(c.frequency::text,'')) IN ('semiannual') THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,7))
+                  WHEN lower(COALESCE(c.frequency::text,'')) IN ('annual') THEN (EXTRACT(MONTH FROM sm.m)::int IN (10,11,12))
+                  ELSE true
+                END
+              ) THEN 'not_applicable'
+              WHEN le.kpi_id IS NULL THEN
+                CASE
+                  WHEN sm.m < cm.cm THEN 'overdue'
+                  ELSE 'pending'
+                END
+              ELSE
+                CASE lower(COALESCE(le.review_status,''))
+                  WHEN 'in_review' THEN 'pending'
+                  WHEN 'submitted' THEN 'pending'
+                  WHEN 'under_review' THEN 'pending'
+                  WHEN 'approved' THEN 'green'
+                  WHEN 'needs_changes' THEN 'yellow'
+                  WHEN 'rejected' THEN 'red'
+                  ELSE 'pending'
+                END
+            END::text AS kpi_final_status
+          FROM controls c
+          LEFT JOIN kpis k ON k.control_id = c.id AND k.tenant_id = ${ctx.tenantId}
+          LEFT JOIN latest_exec_in_month le ON le.kpi_id = k.id
+          CROSS JOIN selected_month sm
+          CROSS JOIN current_month cm
+          WHERE c.tenant_id = ${ctx.tenantId}
+        ),
+        control_worst AS (
+          SELECT
+            c.id AS control_id,
+            CASE
+              WHEN lower(COALESCE(c.frequency::text,'')) IN ('daily','weekly','monthly','on_demand') THEN true
+              WHEN lower(COALESCE(c.frequency::text,'')) IN ('quarterly') THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,4,7,11))
+              WHEN lower(COALESCE(c.frequency::text,'')) IN ('semiannual') THEN (EXTRACT(MONTH FROM sm.m)::int IN (1,7))
+              WHEN lower(COALESCE(c.frequency::text,'')) IN ('annual') THEN (EXTRACT(MONTH FROM sm.m)::int IN (10,11,12))
+              ELSE true
+            END AS month_applicable,
+            MAX(
+              CASE kms.kpi_final_status
+                WHEN 'red' THEN 5
+                WHEN 'yellow' THEN 4
+                WHEN 'overdue' THEN 3
+                WHEN 'pending' THEN 2
+                WHEN 'green' THEN 1
+                ELSE 0
+              END
+            )::int AS worst_final_sev
+          FROM controls c
+          CROSS JOIN selected_month sm
+          LEFT JOIN kpi_month_status kms ON kms.control_id = c.id
+          WHERE c.tenant_id = ${ctx.tenantId}
+          GROUP BY c.id, month_applicable
+        ),
+        filtered AS (
+          SELECT
+            CASE
+              WHEN cw.month_applicable = false THEN 'not_applicable'
+              WHEN cw.worst_final_sev = 5 THEN 'critical'
+              WHEN cw.worst_final_sev = 4 THEN 'warning'
+              WHEN cw.worst_final_sev = 3 THEN 'overdue'
+              WHEN cw.worst_final_sev = 2 THEN 'pending'
+              WHEN cw.worst_final_sev = 1 THEN 'effective'
+              ELSE 'pending'
+            END::text AS control_result
+          FROM controls c
+          LEFT JOIN frameworks f ON f.id = c.framework_id
+          LEFT JOIN risk_catalog r ON r.id = c.risk_id
+          LEFT JOIN control_worst cw ON cw.control_id = c.id
+          WHERE c.tenant_id = ${ctx.tenantId}
+            AND (
+              ${noScope}::boolean
+              OR (${oneTeam}::boolean AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid))
+              OR ((NOT ${oneTeam}::boolean) AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[])))
+            )
+            AND (
+              ${q}::text IS NULL
+              OR c.name ILIKE ${q}
+              OR c.control_code ILIKE ${q}
+              OR COALESCE(f.name, '') ILIKE ${q}
+              OR COALESCE(c.control_owner_name, '') ILIKE ${q}
+              OR COALESCE(c.control_owner_email, '') ILIKE ${q}
+              OR COALESCE(c.focal_point_name, '') ILIKE ${q}
+              OR COALESCE(c.focal_point_email, '') ILIKE ${q}
+            )
+            AND (${framework} = '' OR COALESCE(f.name, '') = ${framework})
+            AND (${frequency} = '' OR COALESCE(c.frequency::text, '') = ${frequency})
+            AND (${risk} = '' OR COALESCE(r.classification::text, '') = ${risk})
+            AND (
+              ${owner} = ''
+              OR lower(COALESCE(c.control_owner_email::text, '')) = lower(${owner})
+              OR lower(COALESCE(c.control_owner_name::text, '')) = lower(${owner})
+            )
+            AND (
+              ${focal} = ''
+              OR lower(COALESCE(c.focal_point_email::text, '')) = lower(${focal})
+              OR lower(COALESCE(c.focal_point_name::text, '')) = lower(${focal})
+            )
+        )
+        SELECT control_result::text AS status, COUNT(*)::int AS count
+        FROM filtered
+        GROUP BY control_result
+      `
+
+      const summary: ControlsSummary = {
+        total: 0,
+        effective: 0,
+        warning: 0,
+        critical: 0,
+        pending: 0,
+        overdue: 0,
+        not_applicable: 0,
+      }
+
+      for (const row of summaryRes.rows) {
+        const status = (row.status || "pending").toLowerCase()
+        const count = row.count ?? 0
+        summary.total += count
+        if (status in summary) {
+          ;(summary as Record<string, number>)[status] += count
+        } else {
+          summary.pending += count
+        }
+      }
+
+      return summary
+    },
+    ["controls-summary", ctx.tenantId, ctx.userId, scopeKey, filtersKey],
+    { revalidate: 120 }
+  )
+
+  return cached()
 }
 
 // =====================================================

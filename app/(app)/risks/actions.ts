@@ -2,6 +2,7 @@
 
 import { sql } from "@vercel/postgres"
 import { revalidatePath } from "next/cache"
+import { unstable_cache } from "next/cache"
 import { getContext } from "../lib/context"
 import { getRisksScope } from "../lib/authz"
 import { ensureTeamIdColumns } from "../lib/rbac-migrations"
@@ -35,6 +36,18 @@ export type RiskHeatmapResult = {
   validCount: number
 }
 
+export type RiskClassificationCounts = {
+  critical: number
+  high: number
+  med: number
+  low: number
+}
+
+export type RiskAnalyticsResult = {
+  counts: RiskClassificationCounts
+  heatmap: RiskHeatmapResult
+}
+
 async function ensureRiskCatalogColumns() {
   await sql`ALTER TABLE risk_catalog ADD COLUMN IF NOT EXISTS source text NULL`
   await sql`ALTER TABLE risk_catalog ADD COLUMN IF NOT EXISTS natureza text NULL`
@@ -43,11 +56,27 @@ async function ensureRiskCatalogColumns() {
   await sql`ALTER TABLE risk_catalog ADD COLUMN IF NOT EXISTS status text NULL`
 }
 
+let ensureRiskCatalogColumnsPromise: Promise<void> | null = null
+async function ensureRiskCatalogColumnsOnce() {
+  if (!ensureRiskCatalogColumnsPromise) {
+    ensureRiskCatalogColumnsPromise = ensureRiskCatalogColumns()
+  }
+  await ensureRiskCatalogColumnsPromise
+}
+
+let ensureTeamIdColumnsPromise: Promise<void> | null = null
+async function ensureTeamIdColumnsOnce() {
+  if (!ensureTeamIdColumnsPromise) {
+    ensureTeamIdColumnsPromise = ensureTeamIdColumns()
+  }
+  await ensureTeamIdColumnsPromise
+}
+
 export type RiskStatusValue = "open" | "mitigating" | "accepted" | "closed"
 
 export async function updateRiskStatus(riskId: string, status: RiskStatusValue): Promise<{ ok: boolean; error?: string }> {
   const ctx = await getContext()
-  await ensureRiskCatalogColumns()
+  await ensureRiskCatalogColumnsOnce()
 
   const valid = ["open", "mitigating", "accepted", "closed"].includes(status) ? status : "open"
 
@@ -89,38 +118,50 @@ export async function fetchRisksFilterOptions(): Promise<{
   naturezas: string[]
 }> {
   const ctx = await getContext()
-  await ensureRiskCatalogColumns()
-  await ensureTeamIdColumns()
+  await ensureRiskCatalogColumnsOnce()
+  await ensureTeamIdColumnsOnce()
   const scope = await getRisksScope(ctx.tenantId, ctx.userId)
   const teamIdsArr = scope.teamIds
   const noScope = scope.canViewAll || teamIdsArr.length === 0
   const oneTeam = !noScope && teamIdsArr.length === 1
   const firstTeamId = teamIdsArr[0] ?? ""
   const teamsArray = teamIdsArr as unknown as string
+  const scopeKey = noScope ? "all" : oneTeam ? `one:${firstTeamId}` : `many:${teamIdsArr.slice().sort().join(",")}`
+  const cached = unstable_cache(
+    async (): Promise<{ classifications: string[]; sources: string[]; naturezas: string[] }> => {
+      const res = noScope
+        ? await sql<{ classifications: string[] | null; sources: string[] | null; naturezas: string[] | null }>`
+            SELECT
+              ARRAY(SELECT DISTINCT rc.classification::text FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND rc.classification IS NOT NULL AND btrim(rc.classification::text) <> '' ORDER BY 1) AS classifications,
+              ARRAY(SELECT DISTINCT rc.source::text FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND rc.source IS NOT NULL AND btrim(rc.source::text) <> '' ORDER BY 1) AS sources,
+              ARRAY(SELECT DISTINCT rc.natureza::text FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND rc.natureza IS NOT NULL AND btrim(rc.natureza::text) <> '' ORDER BY 1) AS naturezas
+          `
+        : oneTeam
+          ? await sql<{ classifications: string[] | null; sources: string[] | null; naturezas: string[] | null }>`
+              SELECT
+                ARRAY(SELECT DISTINCT rc.classification::text FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND (rc.team_id IS NULL OR rc.team_id = ${firstTeamId}::uuid) AND rc.classification IS NOT NULL AND btrim(rc.classification::text) <> '' ORDER BY 1) AS classifications,
+                ARRAY(SELECT DISTINCT rc.source::text FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND (rc.team_id IS NULL OR rc.team_id = ${firstTeamId}::uuid) AND rc.source IS NOT NULL AND btrim(rc.source::text) <> '' ORDER BY 1) AS sources,
+                ARRAY(SELECT DISTINCT rc.natureza::text FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND (rc.team_id IS NULL OR rc.team_id = ${firstTeamId}::uuid) AND rc.natureza IS NOT NULL AND btrim(rc.natureza::text) <> '' ORDER BY 1) AS naturezas
+            `
+          : await sql<{ classifications: string[] | null; sources: string[] | null; naturezas: string[] | null }>`
+              SELECT
+                ARRAY(SELECT DISTINCT rc.classification::text FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND (rc.team_id IS NULL OR rc.team_id = ANY(${teamsArray}::uuid[])) AND rc.classification IS NOT NULL AND btrim(rc.classification::text) <> '' ORDER BY 1) AS classifications,
+                ARRAY(SELECT DISTINCT rc.source::text FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND (rc.team_id IS NULL OR rc.team_id = ANY(${teamsArray}::uuid[])) AND rc.source IS NOT NULL AND btrim(rc.source::text) <> '' ORDER BY 1) AS sources,
+                ARRAY(SELECT DISTINCT rc.natureza::text FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND (rc.team_id IS NULL OR rc.team_id = ANY(${teamsArray}::uuid[])) AND rc.natureza IS NOT NULL AND btrim(rc.natureza::text) <> '' ORDER BY 1) AS naturezas
+            `
 
-  const [classRes, sourceRes, naturezaRes] = noScope
-    ? await Promise.all([
-        sql<{ v: string }>`SELECT DISTINCT rc.classification::text AS v FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND rc.classification IS NOT NULL AND btrim(rc.classification::text) <> '' ORDER BY v`,
-        sql<{ v: string }>`SELECT DISTINCT rc.source::text AS v FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND rc.source IS NOT NULL AND btrim(rc.source::text) <> '' ORDER BY v`,
-        sql<{ v: string }>`SELECT DISTINCT rc.natureza::text AS v FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND rc.natureza IS NOT NULL AND btrim(rc.natureza::text) <> '' ORDER BY v`,
-      ])
-    : oneTeam
-      ? await Promise.all([
-          sql<{ v: string }>`SELECT DISTINCT rc.classification::text AS v FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND (rc.team_id IS NULL OR rc.team_id = ${firstTeamId}::uuid) AND rc.classification IS NOT NULL AND btrim(rc.classification::text) <> '' ORDER BY v`,
-          sql<{ v: string }>`SELECT DISTINCT rc.source::text AS v FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND (rc.team_id IS NULL OR rc.team_id = ${firstTeamId}::uuid) AND rc.source IS NOT NULL AND btrim(rc.source::text) <> '' ORDER BY v`,
-          sql<{ v: string }>`SELECT DISTINCT rc.natureza::text AS v FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND (rc.team_id IS NULL OR rc.team_id = ${firstTeamId}::uuid) AND rc.natureza IS NOT NULL AND btrim(rc.natureza::text) <> '' ORDER BY v`,
-        ])
-      : await Promise.all([
-          sql<{ v: string }>`SELECT DISTINCT rc.classification::text AS v FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND (rc.team_id IS NULL OR rc.team_id = ANY(${teamsArray}::uuid[])) AND rc.classification IS NOT NULL AND btrim(rc.classification::text) <> '' ORDER BY v`,
-          sql<{ v: string }>`SELECT DISTINCT rc.source::text AS v FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND (rc.team_id IS NULL OR rc.team_id = ANY(${teamsArray}::uuid[])) AND rc.source IS NOT NULL AND btrim(rc.source::text) <> '' ORDER BY v`,
-          sql<{ v: string }>`SELECT DISTINCT rc.natureza::text AS v FROM risk_catalog rc WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND (rc.team_id IS NULL OR rc.team_id = ANY(${teamsArray}::uuid[])) AND rc.natureza IS NOT NULL AND btrim(rc.natureza::text) <> '' ORDER BY v`,
-        ])
+      const row = res.rows[0]
+      return {
+        classifications: row?.classifications ?? [],
+        sources: row?.sources ?? [],
+        naturezas: row?.naturezas ?? [],
+      }
+    },
+    ["risks-filter-options", ctx.tenantId, ctx.userId, scopeKey],
+    { revalidate: 300 }
+  )
 
-  return {
-    classifications: classRes.rows.map((r) => r.v),
-    sources: sourceRes.rows.map((r) => r.v),
-    naturezas: naturezaRes.rows.map((r) => r.v),
-  }
+  return cached()
 }
 
 export async function fetchRisks(opts: {
@@ -132,8 +173,8 @@ export async function fetchRisks(opts: {
   offset?: number
 }): Promise<{ rows: RiskRow[]; total: number }> {
   const ctx = await getContext()
-  await ensureRiskCatalogColumns()
-  await ensureTeamIdColumns()
+  await ensureRiskCatalogColumnsOnce()
+  await ensureTeamIdColumnsOnce()
   const scope = await getRisksScope(ctx.tenantId, ctx.userId)
   const teamIdsArr = scope.teamIds
   const noScope = scope.canViewAll || teamIdsArr.length === 0
@@ -198,9 +239,19 @@ export async function fetchRiskCountsByClassification(opts: {
   source?: string
   natureza?: string
 }): Promise<{ critical: number; high: number; med: number; low: number }> {
+  const analytics = await fetchRiskAnalytics(opts)
+  return analytics.counts
+}
+
+export async function fetchRiskAnalytics(opts: {
+  q?: string
+  classification?: string
+  source?: string
+  natureza?: string
+}): Promise<RiskAnalyticsResult> {
   const ctx = await getContext()
-  await ensureRiskCatalogColumns()
-  await ensureTeamIdColumns()
+  await ensureRiskCatalogColumnsOnce()
+  await ensureTeamIdColumnsOnce()
   const scope = await getRisksScope(ctx.tenantId, ctx.userId)
   const teamIdsArr = scope.teamIds
   const noScope = scope.canViewAll || teamIdsArr.length === 0
@@ -214,115 +265,160 @@ export async function fetchRiskCountsByClassification(opts: {
   const source = (opts.source ?? "").trim() || null
   const natureza = (opts.natureza ?? "").trim() || null
 
-  const { rows } = noScope
-    ? await sql<{ classification: string; cnt: number }>`
-        SELECT LOWER(COALESCE(rc.classification::text, 'low')) AS classification, COUNT(*)::int AS cnt
+  const filteredBase = noScope
+    ? sql<HeatmapCellRow>`
+        SELECT
+          rc.impact::int AS impact,
+          rc.likelihood::int AS likelihood,
+          COUNT(*)::int AS total
         FROM risk_catalog rc
         WHERE rc.tenant_id = ${ctx.tenantId}::uuid
           AND (${searchPattern}::text IS NULL OR rc.risk_code ILIKE ${searchPattern} OR rc.title ILIKE ${searchPattern} OR COALESCE(rc.description, '') ILIKE ${searchPattern})
           AND (${classification}::text IS NULL OR rc.classification::text = ${classification})
           AND (${source}::text IS NULL OR rc.source::text = ${source})
           AND (${natureza}::text IS NULL OR rc.natureza::text = ${natureza})
-        GROUP BY LOWER(COALESCE(rc.classification::text, 'low'))
+        GROUP BY rc.impact, rc.likelihood
       `
     : oneTeam
-      ? await sql<{ classification: string; cnt: number }>`
-          SELECT LOWER(COALESCE(rc.classification::text, 'low')) AS classification, COUNT(*)::int AS cnt
+      ? sql<HeatmapCellRow>`
+          SELECT
+            rc.impact::int AS impact,
+            rc.likelihood::int AS likelihood,
+            COUNT(*)::int AS total
           FROM risk_catalog rc
-          WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND (rc.team_id IS NULL OR rc.team_id = ${firstTeamId}::uuid)
+          WHERE rc.tenant_id = ${ctx.tenantId}::uuid
+            AND (rc.team_id IS NULL OR rc.team_id = ${firstTeamId}::uuid)
             AND (${searchPattern}::text IS NULL OR rc.risk_code ILIKE ${searchPattern} OR rc.title ILIKE ${searchPattern} OR COALESCE(rc.description, '') ILIKE ${searchPattern})
             AND (${classification}::text IS NULL OR rc.classification::text = ${classification})
             AND (${source}::text IS NULL OR rc.source::text = ${source})
             AND (${natureza}::text IS NULL OR rc.natureza::text = ${natureza})
-          GROUP BY LOWER(COALESCE(rc.classification::text, 'low'))
+          GROUP BY rc.impact, rc.likelihood
         `
-      : await sql<{ classification: string; cnt: number }>`
-          SELECT LOWER(COALESCE(rc.classification::text, 'low')) AS classification, COUNT(*)::int AS cnt
+      : sql<HeatmapCellRow>`
+          SELECT
+            rc.impact::int AS impact,
+            rc.likelihood::int AS likelihood,
+            COUNT(*)::int AS total
           FROM risk_catalog rc
-          WHERE rc.tenant_id = ${ctx.tenantId}::uuid AND (rc.team_id IS NULL OR rc.team_id = ANY(${teamsArray}::uuid[]))
+          WHERE rc.tenant_id = ${ctx.tenantId}::uuid
+            AND (rc.team_id IS NULL OR rc.team_id = ANY(${teamsArray}::uuid[]))
             AND (${searchPattern}::text IS NULL OR rc.risk_code ILIKE ${searchPattern} OR rc.title ILIKE ${searchPattern} OR COALESCE(rc.description, '') ILIKE ${searchPattern})
             AND (${classification}::text IS NULL OR rc.classification::text = ${classification})
             AND (${source}::text IS NULL OR rc.source::text = ${source})
             AND (${natureza}::text IS NULL OR rc.natureza::text = ${natureza})
-          GROUP BY LOWER(COALESCE(rc.classification::text, 'low'))
+          GROUP BY rc.impact, rc.likelihood
         `
 
-  const counts = { critical: 0, high: 0, med: 0, low: 0 }
-  for (const r of rows) {
-    const c = (r.classification || "low").toLowerCase()
-    if (c === "critical") counts.critical = r.cnt
-    else if (c === "high") counts.high = r.cnt
-    else if (c === "med" || c === "medium") counts.med = r.cnt
-    else counts.low = (counts.low || 0) + r.cnt
+  const totalsBase = noScope
+    ? sql<{ total_filtered: number; valid_count: number; impact_sum: number; likelihood_sum: number; critical: number; high: number; med: number; low: number }>`
+        SELECT
+          COUNT(*)::int AS total_filtered,
+          SUM(CASE WHEN rc.impact BETWEEN 1 AND 5 AND rc.likelihood BETWEEN 1 AND 5 THEN 1 ELSE 0 END)::int AS valid_count,
+          SUM(CASE WHEN rc.impact BETWEEN 1 AND 5 AND rc.likelihood BETWEEN 1 AND 5 THEN rc.impact ELSE 0 END)::int AS impact_sum,
+          SUM(CASE WHEN rc.impact BETWEEN 1 AND 5 AND rc.likelihood BETWEEN 1 AND 5 THEN rc.likelihood ELSE 0 END)::int AS likelihood_sum,
+          SUM(CASE WHEN lower(COALESCE(rc.classification::text, 'low')) = 'critical' THEN 1 ELSE 0 END)::int AS critical,
+          SUM(CASE WHEN lower(COALESCE(rc.classification::text, 'low')) = 'high' THEN 1 ELSE 0 END)::int AS high,
+          SUM(CASE WHEN lower(COALESCE(rc.classification::text, 'low')) IN ('med', 'medium') THEN 1 ELSE 0 END)::int AS med,
+          SUM(CASE WHEN lower(COALESCE(rc.classification::text, 'low')) NOT IN ('critical', 'high', 'med', 'medium') THEN 1 ELSE 0 END)::int AS low
+        FROM risk_catalog rc
+        WHERE rc.tenant_id = ${ctx.tenantId}::uuid
+          AND (${searchPattern}::text IS NULL OR rc.risk_code ILIKE ${searchPattern} OR rc.title ILIKE ${searchPattern} OR COALESCE(rc.description, '') ILIKE ${searchPattern})
+          AND (${classification}::text IS NULL OR rc.classification::text = ${classification})
+          AND (${source}::text IS NULL OR rc.source::text = ${source})
+          AND (${natureza}::text IS NULL OR rc.natureza::text = ${natureza})
+      `
+    : oneTeam
+      ? sql<{ total_filtered: number; valid_count: number; impact_sum: number; likelihood_sum: number; critical: number; high: number; med: number; low: number }>`
+          SELECT
+            COUNT(*)::int AS total_filtered,
+            SUM(CASE WHEN rc.impact BETWEEN 1 AND 5 AND rc.likelihood BETWEEN 1 AND 5 THEN 1 ELSE 0 END)::int AS valid_count,
+            SUM(CASE WHEN rc.impact BETWEEN 1 AND 5 AND rc.likelihood BETWEEN 1 AND 5 THEN rc.impact ELSE 0 END)::int AS impact_sum,
+            SUM(CASE WHEN rc.impact BETWEEN 1 AND 5 AND rc.likelihood BETWEEN 1 AND 5 THEN rc.likelihood ELSE 0 END)::int AS likelihood_sum,
+            SUM(CASE WHEN lower(COALESCE(rc.classification::text, 'low')) = 'critical' THEN 1 ELSE 0 END)::int AS critical,
+            SUM(CASE WHEN lower(COALESCE(rc.classification::text, 'low')) = 'high' THEN 1 ELSE 0 END)::int AS high,
+            SUM(CASE WHEN lower(COALESCE(rc.classification::text, 'low')) IN ('med', 'medium') THEN 1 ELSE 0 END)::int AS med,
+            SUM(CASE WHEN lower(COALESCE(rc.classification::text, 'low')) NOT IN ('critical', 'high', 'med', 'medium') THEN 1 ELSE 0 END)::int AS low
+          FROM risk_catalog rc
+          WHERE rc.tenant_id = ${ctx.tenantId}::uuid
+            AND (rc.team_id IS NULL OR rc.team_id = ${firstTeamId}::uuid)
+            AND (${searchPattern}::text IS NULL OR rc.risk_code ILIKE ${searchPattern} OR rc.title ILIKE ${searchPattern} OR COALESCE(rc.description, '') ILIKE ${searchPattern})
+            AND (${classification}::text IS NULL OR rc.classification::text = ${classification})
+            AND (${source}::text IS NULL OR rc.source::text = ${source})
+            AND (${natureza}::text IS NULL OR rc.natureza::text = ${natureza})
+        `
+      : sql<{ total_filtered: number; valid_count: number; impact_sum: number; likelihood_sum: number; critical: number; high: number; med: number; low: number }>`
+          SELECT
+            COUNT(*)::int AS total_filtered,
+            SUM(CASE WHEN rc.impact BETWEEN 1 AND 5 AND rc.likelihood BETWEEN 1 AND 5 THEN 1 ELSE 0 END)::int AS valid_count,
+            SUM(CASE WHEN rc.impact BETWEEN 1 AND 5 AND rc.likelihood BETWEEN 1 AND 5 THEN rc.impact ELSE 0 END)::int AS impact_sum,
+            SUM(CASE WHEN rc.impact BETWEEN 1 AND 5 AND rc.likelihood BETWEEN 1 AND 5 THEN rc.likelihood ELSE 0 END)::int AS likelihood_sum,
+            SUM(CASE WHEN lower(COALESCE(rc.classification::text, 'low')) = 'critical' THEN 1 ELSE 0 END)::int AS critical,
+            SUM(CASE WHEN lower(COALESCE(rc.classification::text, 'low')) = 'high' THEN 1 ELSE 0 END)::int AS high,
+            SUM(CASE WHEN lower(COALESCE(rc.classification::text, 'low')) IN ('med', 'medium') THEN 1 ELSE 0 END)::int AS med,
+            SUM(CASE WHEN lower(COALESCE(rc.classification::text, 'low')) NOT IN ('critical', 'high', 'med', 'medium') THEN 1 ELSE 0 END)::int AS low
+          FROM risk_catalog rc
+          WHERE rc.tenant_id = ${ctx.tenantId}::uuid
+            AND (rc.team_id IS NULL OR rc.team_id = ANY(${teamsArray}::uuid[]))
+            AND (${searchPattern}::text IS NULL OR rc.risk_code ILIKE ${searchPattern} OR rc.title ILIKE ${searchPattern} OR COALESCE(rc.description, '') ILIKE ${searchPattern})
+            AND (${classification}::text IS NULL OR rc.classification::text = ${classification})
+            AND (${source}::text IS NULL OR rc.source::text = ${source})
+            AND (${natureza}::text IS NULL OR rc.natureza::text = ${natureza})
+        `
+
+  const [matrixRes, totalsRes] = await Promise.all([filteredBase, totalsBase])
+
+  const matrix = Array.from({ length: 5 }, () => Array.from({ length: 5 }, () => 0))
+  let maxCell = 0
+  for (const row of matrixRes.rows) {
+    const impact = Number(row.impact)
+    const likelihood = Number(row.likelihood)
+    if (!Number.isFinite(impact) || !Number.isFinite(likelihood)) continue
+    if (impact < 1 || impact > 5 || likelihood < 1 || likelihood > 5) continue
+    const count = Number(row.total) || 0
+    const rowIdx = Math.floor(likelihood) - 1
+    const colIdx = Math.floor(impact) - 1
+    matrix[rowIdx][colIdx] = count
+    maxCell = Math.max(maxCell, count)
   }
-  return counts
+
+  const totalRow = totalsRes.rows[0]
+  const totalFiltered = totalRow?.total_filtered ?? 0
+  const validCount = totalRow?.valid_count ?? 0
+  const impactSum = totalRow?.impact_sum ?? 0
+  const likelihoodSum = totalRow?.likelihood_sum ?? 0
+  const missing = Math.max(0, totalFiltered - validCount)
+
+  return {
+    counts: {
+      critical: totalRow?.critical ?? 0,
+      high: totalRow?.high ?? 0,
+      med: totalRow?.med ?? 0,
+      low: totalRow?.low ?? 0,
+    },
+    heatmap: {
+      tenantId: ctx.tenantId,
+      matrix,
+      maxCell,
+      missing,
+      totalFiltered,
+      validCount,
+      totals: {
+        overall: validCount,
+        impact: validCount > 0 ? Math.round((impactSum / validCount) * 10) / 10 : 0,
+        likelihood: validCount > 0 ? Math.round((likelihoodSum / validCount) * 10) / 10 : 0,
+      },
+    },
+  }
 }
 
-/**
- * Heatmap 5x5:
- * - X = impact (1..5)
- * - Y = likelihood (1..5)
- * - matrix[likelihood-1][impact-1] = total
- *
- * ✅ Usa os MESMOS dados da tabela (fetchRisks) — mesma query base, agregamos em JS.
- */
 export async function fetchRiskHeatmapMatrix(opts: {
   q?: string
   classification?: string
   source?: string
   natureza?: string
 }): Promise<RiskHeatmapResult> {
-  const ctx = await getContext()
-  await ensureRiskCatalogColumns()
-
-  // Busca os mesmos riscos que a tabela (mesma query, sem paginação) para agregar impact/likelihood
-  const { rows: allRows } = await fetchRisks({
-    ...opts,
-    limit: 10000,
-    offset: 0,
-  })
-
-  const matrix = Array.from({ length: 5 }, () => Array.from({ length: 5 }, () => 0))
-  let maxCell = 0
-  let sum = 0
-  let impactSum = 0
-  let likelihoodSum = 0
-  let validCount = 0
-
-  for (const r of allRows) {
-    const impact = r.impact != null ? Number(r.impact) : NaN
-    const likelihood = r.likelihood != null ? Number(r.likelihood) : NaN
-
-    if (!Number.isFinite(impact) || !Number.isFinite(likelihood)) continue
-    if (impact < 1 || impact > 5 || likelihood < 1 || likelihood > 5) continue
-
-    validCount++
-    const rowIdx = Math.floor(likelihood) - 1
-    const colIdx = Math.floor(impact) - 1
-    matrix[rowIdx][colIdx] = (matrix[rowIdx][colIdx] ?? 0) + 1
-    maxCell = Math.max(maxCell, matrix[rowIdx][colIdx])
-
-    sum += 1
-    impactSum += impact
-    likelihoodSum += likelihood
-  }
-
-  const totalFiltered = allRows.length
-  const missing = Math.max(0, totalFiltered - validCount)
-
-  return {
-    tenantId: ctx.tenantId,
-    matrix,
-    maxCell,
-    missing,
-    totalFiltered,
-    validCount,
-    totals: {
-      overall: sum,
-      impact: sum > 0 ? Math.round((impactSum / sum) * 10) / 10 : 0,
-      likelihood: sum > 0 ? Math.round((likelihoodSum / sum) * 10) / 10 : 0,
-    },
-  }
+  const analytics = await fetchRiskAnalytics(opts)
+  return analytics.heatmap
 }
 
 export async function createRisk(formData: FormData): Promise<{
@@ -331,7 +427,7 @@ export async function createRisk(formData: FormData): Promise<{
   riskId?: string
 }> {
   const ctx = await getContext()
-  await ensureRiskCatalogColumns()
+  await ensureRiskCatalogColumnsOnce()
 
   const riskCode = String(formData.get("riskCode") ?? "").trim()
   const title = String(formData.get("title") ?? "").trim()
@@ -413,7 +509,7 @@ export async function updateRiskCatalogImpactLikelihood(
   likelihood: number
 ): Promise<{ ok: boolean; error?: string }> {
   const ctx = await getContext()
-  await ensureRiskCatalogColumns()
+  await ensureRiskCatalogColumnsOnce()
 
   const i = Math.max(1, Math.min(5, Math.floor(Number(impact))))
   const l = Math.max(1, Math.min(5, Math.floor(Number(likelihood))))
@@ -435,7 +531,7 @@ export async function updateRisk(
   formData: FormData
 ): Promise<{ ok: boolean; error?: string }> {
   const ctx = await getContext()
-  await ensureRiskCatalogColumns()
+  await ensureRiskCatalogColumnsOnce()
 
   const riskCode = String(formData.get("riskCode") ?? "").trim()
   const title = String(formData.get("title") ?? "").trim()
@@ -546,3 +642,4 @@ export async function updateRisk(
     return { ok: false, error: msg }
   }
 }
+

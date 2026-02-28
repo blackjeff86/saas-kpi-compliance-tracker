@@ -55,6 +55,7 @@ export default function ActionPlansFilters({
     const params = new URLSearchParams(searchParams.toString())
     if (value.trim()) params.set(key, value.trim())
     else params.delete(key)
+    params.delete("page")
     const next = params.toString()
     router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false })
   }
