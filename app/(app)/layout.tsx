@@ -4,6 +4,8 @@ import AppHeader from "./AppHeader"
 import SidebarNav from "./SidebarNav"
 import { PageTitleProvider } from "./contexts/PageTitleContext"
 
+export const dynamic = "force-dynamic"
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const user = {
     name: "Ricardo Mendes",
