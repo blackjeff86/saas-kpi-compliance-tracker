@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   ShieldCheck,
@@ -67,6 +67,7 @@ function isActivePath(pathname: string, href: string) {
 
 export default function SidebarNav() {
   const pathname = usePathname() || "/"
+  const router = useRouter()
 
   return (
     <nav className="flex h-full flex-col px-3 py-4 text-sm">
@@ -86,6 +87,8 @@ export default function SidebarNav() {
                   <Link
                     key={href}
                     href={href}
+                    onMouseEnter={() => router.prefetch(href)}
+                    onFocus={() => router.prefetch(href)}
                     className={[
                       "relative flex items-center gap-3 rounded-lg px-3 py-2 transition-colors",
                       active

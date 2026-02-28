@@ -71,7 +71,7 @@ function resultBadge(v?: string | null) {
   if (s === "overdue") return "bg-amber-50 text-amber-700 border-amber-200"
 
   // ⚪ Pending (waiting for execution)
-  if (s === "pending") return "bg-slate-50 text-slate-700 border-slate-200"
+  if (s === "pending") return "bg-amber-50 text-amber-700 border-amber-200"
 
   // 🟢 Effective (all applicable KPIs are green)
   if (s === "effective") return "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -127,9 +127,13 @@ function ResultCounts({
 export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?: string }) {
   const router = useRouter()
 
-  const go = (id: string) => {
+  const detailHref = (id: string) => {
     const qs = mes_ref ? `?mes_ref=${encodeURIComponent(mes_ref)}` : ""
-    router.push(`/controles/${id}${qs}`)
+    return `/controles/${id}${qs}`
+  }
+
+  const go = (id: string) => {
+    router.push(detailHref(id))
   }
 
   return (
@@ -156,6 +160,8 @@ export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?
               className="group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors"
               role="button"
               tabIndex={0}
+              onMouseEnter={() => router.prefetch(detailHref(r.id))}
+              onFocus={() => router.prefetch(detailHref(r.id))}
               onClick={() => go(r.id)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") go(r.id)
@@ -213,7 +219,7 @@ export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?
               <td className="px-4 py-3 align-top">
                 <div className="flex flex-col">
                   <span
-                    className={`inline-flex items-center px-2 py-1 rounded-md border text-xs font-medium ${resultBadge(
+                    className={`inline-flex self-start items-center px-2 py-1 rounded-md border text-xs font-medium ${resultBadge(
                       r.control_result_suggested
                     )}`}
                     title="Resultado sugerido (agregado do auto_status dos KPIs)"
@@ -233,7 +239,7 @@ export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?
               <td className="px-4 py-3 align-top">
                 <div className="flex flex-col">
                   <span
-                    className={`inline-flex items-center px-2 py-1 rounded-md border text-xs font-medium ${resultBadge(
+                    className={`inline-flex self-start items-center px-2 py-1 rounded-md border text-xs font-medium ${resultBadge(
                       r.control_result
                     )}`}
                     title="Resultado final do controle no mês (após revisão GRC)"
@@ -261,3 +267,4 @@ export default function ControlsTable({ rows, mes_ref }: { rows: Row[]; mes_ref?
     </div>
   )
 }
+

@@ -99,7 +99,7 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
   // =========================
   // Filters (frameworks dropdown)
   // =========================
-  const frameworksRes = noScope
+  const frameworksPromise = noScope
     ? await sql<{ id: string; name: string }>`
         SELECT DISTINCT f.id::text AS id, f.name::text AS name
         FROM frameworks f
@@ -124,12 +124,10 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
             AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[]))
           ORDER BY f.name ASC
         `
-  const filters: DashboardFilters = { frameworks: frameworksRes.rows }
-
   // =========================
   // Cards
   // =========================
-  const cardsRes = noScope
+  const cardsPromise = noScope
     ? await sql<{
         controls_ok: number
         controls_overdue: number
@@ -331,17 +329,10 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
          AND e.auto_status::text = 'out_of_target'
       ) AS kpis_out_of_target
   `
-  const cards = cardsRes.rows[0] ?? {
-    controls_ok: 0,
-    controls_overdue: 0,
-    controls_critical: 0,
-    kpis_out_of_target: 0,
-  }
-
   // =========================
   // Counts (período + framework)
   // =========================
-  const countsRes =
+  const countsPromise =
     noScope
       ? await sql<{ executions_total: number; executions_pending_grc: number; action_plans_open: number; action_plans_overdue: number }>`
     SELECT
@@ -381,17 +372,10 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
       (SELECT COUNT(*)::int FROM action_plans ap WHERE ap.tenant_id = ${tenantId} AND (ap.team_id IS NULL OR ap.team_id = ANY(${teamsArray}::uuid[])) AND ap.status::text <> 'done' AND ap.due_date IS NOT NULL AND ap.due_date < CURRENT_DATE) AS action_plans_overdue
     FROM (SELECT 1) t
   `
-  const counts = countsRes.rows[0] ?? {
-    executions_total: 0,
-    executions_pending_grc: 0,
-    action_plans_open: 0,
-    action_plans_overdue: 0,
-  }
-
   // =========================
   // Execuções por workflow_status (período + framework)
   // =========================
-  const wfRes = noScope
+  const wfPromise = noScope
     ? await sql<{ workflow_status: string; count: number }>`SELECT e.workflow_status::text AS workflow_status, COUNT(*)::int AS count FROM kpi_executions e JOIN controls c ON c.id = e.control_id WHERE e.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid) AND e.period_start >= ${startDate}::date AND e.period_start < ${endDate}::date GROUP BY e.workflow_status ORDER BY count DESC, workflow_status ASC`
     : oneTeam
       ? await sql<{ workflow_status: string; count: number }>`SELECT e.workflow_status::text AS workflow_status, COUNT(*)::int AS count FROM kpi_executions e JOIN controls c ON c.id = e.control_id WHERE e.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid) AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid) AND e.period_start >= ${startDate}::date AND e.period_start < ${endDate}::date GROUP BY e.workflow_status ORDER BY count DESC, workflow_status ASC`
@@ -400,7 +384,7 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
   // =========================
   // Execuções por auto_status (período + framework)
   // =========================
-  const autoRes =
+  const autoPromise =
     noScope
       ? await sql<{ auto_status: string; count: number }>`SELECT e.auto_status::text AS auto_status, COUNT(*)::int AS count FROM kpi_executions e JOIN controls c ON c.id = e.control_id WHERE e.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid) AND e.period_start >= ${startDate}::date AND e.period_start < ${endDate}::date GROUP BY e.auto_status ORDER BY count DESC, auto_status ASC`
       : oneTeam
@@ -410,7 +394,7 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
   // =========================
   // Action plans por prioridade
   // =========================
-  const prioRes =
+  const prioPromise =
     noScope
       ? await sql<{ priority: string; count: number }>`SELECT priority::text AS priority, COUNT(*)::int AS count FROM action_plans ap WHERE ap.tenant_id = ${tenantId} AND ap.status::text <> 'done' GROUP BY ap.priority ORDER BY count DESC, priority ASC`
       : oneTeam
@@ -420,7 +404,7 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
   // =========================
   // Action plans vencendo em até 7 dias
   // =========================
-  const dueSoonRes =
+  const dueSoonPromise =
     noScope
       ? await sql<{ id: string; title: string; priority: string; status: string; due_date: string; execution_id: string; control_code: string | null; kpi_code: string | null }>`SELECT ap.id, ap.title, ap.priority::text AS priority, ap.status::text AS status, ap.due_date::text AS due_date, ap.execution_id::text AS execution_id, c.control_code::text AS control_code, k.kpi_code::text AS kpi_code FROM action_plans ap LEFT JOIN controls c ON c.id = ap.control_id LEFT JOIN kpis k ON k.id = ap.kpi_id WHERE ap.tenant_id = ${tenantId} AND ap.status::text <> 'done' AND ap.due_date IS NOT NULL AND ap.due_date <= (CURRENT_DATE + INTERVAL '7 days')::date ORDER BY ap.due_date ASC, ap.priority DESC, ap.created_at DESC LIMIT 10`
       : oneTeam
@@ -430,7 +414,7 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
   // =========================
   // Execuções recentes (período + framework)
   // =========================
-  const recentExecRes =
+  const recentExecPromise =
     noScope
       ? await sql<{ id: string; control_code: string; kpi_code: string; period_start: string; period_end: string; auto_status: string; workflow_status: string; created_at: string }>`SELECT e.id::text AS id, c.control_code::text AS control_code, k.kpi_code::text AS kpi_code, e.period_start::text AS period_start, e.period_end::text AS period_end, e.auto_status::text AS auto_status, e.workflow_status::text AS workflow_status, e.created_at::text AS created_at FROM kpi_executions e JOIN controls c ON c.id = e.control_id JOIN kpis k ON k.id = e.kpi_id WHERE e.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid) AND e.period_start >= ${startDate}::date AND e.period_start < ${endDate}::date ORDER BY e.created_at DESC LIMIT 10`
       : oneTeam
@@ -440,7 +424,7 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
   // =========================
   // Gráfico 6 meses (% in_target) + framework
   // =========================
-  const perfRes =
+  const perfPromise =
     noScope
       ? await sql<{ month: string; pct_in_target: number }>`WITH months AS (SELECT generate_series(date_trunc('month', CURRENT_DATE) - interval '5 months', date_trunc('month', CURRENT_DATE), interval '1 month')::date AS month_start), agg AS (SELECT date_trunc('month', e.period_start)::date AS month_start, COUNT(*)::int AS total, SUM(CASE WHEN e.auto_status::text = 'in_target' THEN 1 ELSE 0 END)::int AS ok FROM kpi_executions e JOIN controls c ON c.id = e.control_id WHERE e.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid) AND e.period_start >= (date_trunc('month', CURRENT_DATE) - interval '5 months')::date GROUP BY 1) SELECT to_char(m.month_start, 'Mon')::text AS month, COALESCE(ROUND((a.ok::numeric / NULLIF(a.total,0)) * 100, 0), 0)::int AS pct_in_target FROM months m LEFT JOIN agg a ON a.month_start = m.month_start ORDER BY m.month_start ASC`
       : oneTeam
@@ -450,7 +434,7 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
   // =========================
   // Controles críticos + framework
   // =========================
-  const criticalRes =
+  const criticalPromise =
     noScope
       ? await sql<{ control_id: string; control_code: string; control_name: string; owner_name: string | null; workflow_status: string | null; due_date: string | null }>`
     WITH latest_exec AS (SELECT DISTINCT ON (e.control_id) e.control_id, e.workflow_status::text AS workflow_status, e.due_date::text AS due_date FROM kpi_executions e WHERE e.tenant_id = ${tenantId} ORDER BY e.control_id, e.period_end DESC NULLS LAST, e.created_at DESC)
@@ -474,6 +458,44 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
     WHERE c.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid) AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[])) AND r.classification::text IN ('high','critical')
     ORDER BY c.updated_at DESC LIMIT 10
   `
+
+  const [
+    frameworksRes,
+    cardsRes,
+    countsRes,
+    wfRes,
+    autoRes,
+    prioRes,
+    dueSoonRes,
+    recentExecRes,
+    perfRes,
+    criticalRes,
+  ] = await Promise.all([
+    frameworksPromise,
+    cardsPromise,
+    countsPromise,
+    wfPromise,
+    autoPromise,
+    prioPromise,
+    dueSoonPromise,
+    recentExecPromise,
+    perfPromise,
+    criticalPromise,
+  ])
+
+  const filters: DashboardFilters = { frameworks: frameworksRes.rows }
+  const cards = cardsRes.rows[0] ?? {
+    controls_ok: 0,
+    controls_overdue: 0,
+    controls_critical: 0,
+    kpis_out_of_target: 0,
+  }
+  const counts = countsRes.rows[0] ?? {
+    executions_total: 0,
+    executions_pending_grc: 0,
+    action_plans_open: 0,
+    action_plans_overdue: 0,
+  }
 
   const today0 = new Date()
   today0.setHours(0, 0, 0, 0)

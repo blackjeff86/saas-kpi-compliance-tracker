@@ -12,6 +12,7 @@ import {
   fetchActionPlanEvents,
   fetchActionPlanTasks,
 } from "./actions"
+import { addActionPlanUpdate, fetchActionPlanUpdates } from "./actions-updates"
 
 import {
   ArrowLeft,
@@ -22,6 +23,7 @@ import {
   Clock3,
   FilePlus2,
   ListPlus,
+  MessageSquare,
   Sparkles,
 } from "lucide-react"
 
@@ -124,11 +126,17 @@ export default async function ActionPlanDetailPage({
 
   const plan = await fetchActionPlanDetail(id)
   if (!plan) return notFound()
-  const [tasks, events, editOptions] = await Promise.all([
+  const [tasks, events, editOptions, updates] = await Promise.all([
     fetchActionPlanTasks(id),
     fetchActionPlanEvents(id),
     fetchActionPlanEditOptions(),
+    fetchActionPlanUpdates(id),
   ])
+
+  async function onAddUpdate(formData: FormData) {
+    "use server"
+    await addActionPlanUpdate(id, formData)
+  }
 
   const created = formatDate(plan.created_at ?? plan.updated_at)
   const due = formatDate(plan.due_date)
@@ -161,6 +169,16 @@ export default async function ActionPlanDetailPage({
       description: `Plano registrado por ${responsible}.`,
     },
     ...events.map((event) => {
+      if (event.event_type === "update_added") {
+        return {
+          id: event.id,
+          at: event.created_at,
+          icon: <MessageSquare className="h-3.5 w-3.5 text-sky-700" />,
+          bubble: "bg-sky-100",
+          title: "Atualização adicionada",
+          description: parseEventMessage(event.metadata),
+        }
+      }
       if (event.event_type === "plan_updated") {
         return {
           id: event.id,
@@ -364,6 +382,54 @@ export default async function ActionPlanDetailPage({
                     <div>Framework: {plan.framework ?? "—"}</div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4 font-semibold text-slate-800">
+                <MessageSquare className="h-4 w-4 text-primary" />
+                Atualizações do Plano
+              </div>
+
+              <div className="space-y-6 p-5">
+                <form action={onAddUpdate} className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Nova atualização
+                    </label>
+                    <textarea
+                      name="content"
+                      rows={4}
+                      placeholder="Descreva as atualizações a respeito deste plano de ação..."
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-primary/40 focus:ring-2 focus:ring-primary/10"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-95"
+                  >
+                    Adicionar atualização
+                  </button>
+                </form>
+
+                {updates.length === 0 ? (
+                  <div className="text-sm text-slate-500">Nenhuma atualização registrada ainda.</div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                      Atualizações anteriores
+                    </div>
+                    {updates.map((u) => (
+                      <div key={u.id} className="rounded-lg border border-slate-200 bg-slate-50/30 p-4">
+                        <p className="whitespace-pre-wrap text-sm text-slate-800">{u.content}</p>
+                        <div className="mt-2 text-xs text-slate-500">
+                          {formatDate(u.created_at)}
+                          {u.author_name ? ` • por ${u.author_name}` : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

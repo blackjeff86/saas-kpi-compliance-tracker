@@ -412,6 +412,8 @@ export type KpiDetail = {
 
   control_id: string
   control_code: string
+  control_name: string | null
+  control_description: string | null
   control_frequency: string | null
 
   is_active: boolean
@@ -476,6 +478,8 @@ export async function fetchKpiExecutionPage(kpiId: string, mes_ref: string) {
     kpi_description: string | null
     control_id: string
     control_code: string
+    control_name: string | null
+    control_description: string | null
     control_frequency: string | null
 
     is_active: boolean | null
@@ -493,6 +497,8 @@ export async function fetchKpiExecutionPage(kpiId: string, mes_ref: string) {
 
       c.id::text AS control_id,
       c.control_code::text AS control_code,
+      c.name::text AS control_name,
+      c.description::text AS control_description,
       c.frequency::text AS control_frequency,
 
       COALESCE(k.is_active, true)::boolean AS is_active,
@@ -526,6 +532,8 @@ export async function fetchKpiExecutionPage(kpiId: string, mes_ref: string) {
 
     control_id: r0.control_id,
     control_code: r0.control_code ?? "",
+    control_name: r0.control_name ?? null,
+    control_description: r0.control_description ?? null,
     control_frequency: r0.control_frequency ?? null,
 
     is_active: isActive,

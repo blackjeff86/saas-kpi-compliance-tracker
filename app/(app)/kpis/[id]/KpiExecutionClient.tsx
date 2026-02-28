@@ -50,6 +50,37 @@ function formatMonthLabel(yyyyMm: string) {
   return `${monthsPt[(m || 1) - 1]}/${y}`
 }
 
+function nextPeriodicMonthRef(baseMonthRef: string, validMonths: number[]) {
+  if (!/^\d{4}-\d{2}$/.test(baseMonthRef)) return null
+  const [yy, mm] = baseMonthRef.split("-").map((x) => Number(x))
+  if (!Number.isFinite(yy) || !Number.isFinite(mm) || mm < 1 || mm > 12) return null
+  const sorted = [...validMonths].sort((a, b) => a - b)
+  const next = sorted.find((m) => m > mm)
+  const targetMonth = next ?? sorted[0]
+  const targetYear = next ? yy : yy + 1
+  return `${targetYear}-${String(targetMonth).padStart(2, "0")}`
+}
+
+function nextReviewMonthRefFromFrequency(baseMonthRef: string, frequency?: string | null) {
+  if (!/^\d{4}-\d{2}$/.test(baseMonthRef)) return null
+  const f = safe(frequency).toLowerCase()
+
+  // Mesma regra de aplicabilidade usada no backend.
+  if (f === "quarterly") return nextPeriodicMonthRef(baseMonthRef, [1, 4, 7, 11])
+  if (f === "semiannual" || f === "semi-annual" || f === "semestral") {
+    return nextPeriodicMonthRef(baseMonthRef, [1, 7])
+  }
+  if (f === "annual" || f === "yearly" || f === "anual") {
+    return nextPeriodicMonthRef(baseMonthRef, [10, 11, 12])
+  }
+
+  // Padrão: mensal.
+  const [yy, mm] = baseMonthRef.split("-").map((x) => Number(x))
+  const nextMonth = mm === 12 ? 1 : mm + 1
+  const nextYear = mm === 12 ? yy + 1 : yy
+  return `${nextYear}-${String(nextMonth).padStart(2, "0")}`
+}
+
 function getActiveTargetValueOnly(kpi: KpiDetail): number | null {
   const isActive = Boolean((kpi as any)?.is_active)
   if (!isActive) return null
@@ -588,6 +619,10 @@ export default function KpiExecutionClient(props: {
   }
 
   const execReviewStatus = reviewStatusNormalize((execution as any)?.grc_review_status)
+  const nextReviewMonthRef = useMemo(
+    () => nextReviewMonthRefFromFrequency(mes_ref_used, kpi.control_frequency),
+    [mes_ref_used, kpi.control_frequency]
+  )
 
   return (
     <div className="space-y-6">
@@ -618,6 +653,27 @@ export default function KpiExecutionClient(props: {
                 >
                   Controle: {kpi.control_code}
                 </Link>
+              </div>
+
+              <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                  Controle associado
+                </div>
+                <div className="mt-1 space-y-1 text-xs text-slate-600">
+                  <div>
+                    <span className="font-semibold text-slate-700">ID:</span> {kpi.control_code ?? "—"}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-700">Nome:</span> {kpi.control_name ?? "—"}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-700">Descrição:</span>{" "}
+                    {kpi.control_description?.trim() ? kpi.control_description : "—"}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-700">Frequência:</span> {kpi.control_frequency ?? "—"}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -881,9 +937,11 @@ export default function KpiExecutionClient(props: {
             style={{ background: "linear-gradient(135deg, var(--primary), #1D4ED8)" }}
           >
             <h3 className="font-bold mb-2">Próxima Revisão</h3>
-            <p className="text-blue-100 text-sm mb-4">Placeholder: depois calculamos pela frequência.</p>
+            <p className="text-blue-100 text-sm mb-4">
+              Calculado pela frequência do controle: {kpi.control_frequency ?? "monthly"}.
+            </p>
             <div className="flex items-center gap-3 bg-white/10 p-3 rounded-lg backdrop-blur-sm">
-              <span className="font-bold">{formatMonthLabel(mes_ref_used)}</span>
+              <span className="font-bold">{nextReviewMonthRef ? formatMonthLabel(nextReviewMonthRef) : "—"}</span>
             </div>
           </div>
 
@@ -900,7 +958,7 @@ export default function KpiExecutionClient(props: {
 
             {actionPlans.length === 0 ? (
               <div className="rounded-lg border border-rose-100 bg-rose-50 p-3">
-                <p className="text-xs font-bold text-rose-600">Pendente: Revisão de Processo</p>
+                <p className="text-xs font-bold text-rose-600">pending: Revisão de Processo</p>
                 <p className="mt-1 text-[11px] text-rose-500">
                   Crie um novo plano para acompanhamento do desvio identificado.
                 </p>

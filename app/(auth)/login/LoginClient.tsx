@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ShieldCheck, Mail, Lock, Eye, EyeOff, Shield, LineChart, Scale } from "lucide-react"
 import Image from "next/image"
@@ -15,6 +15,10 @@ export default function LoginPage() {
   }, [params])
 
   const [showPassword, setShowPassword] = useState(false)
+
+  useEffect(() => {
+    router.prefetch(nextPath)
+  }, [router, nextPath])
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()

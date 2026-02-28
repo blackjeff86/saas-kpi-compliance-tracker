@@ -89,6 +89,7 @@ export default function ActionPlansTable({
   showingTo: number
 }) {
   const router = useRouter()
+  const detailHref = (id: string) => `/action-plans/${id}`
 
   return (
     <div className="overflow-hidden rounded-xl border border-[#E6ECF5] bg-white shadow-sm">
@@ -96,18 +97,19 @@ export default function ActionPlansTable({
         <table className="w-full border-collapse text-left">
           <thead>
             <tr className="bg-[#F2F6FF] border-b border-slate-200 dark:border-slate-800">
-              <th className="ui-table-th px-4 py-3">Ação e descrição</th>
-              <th className="ui-table-th px-4 py-3">Responsável</th>
-              <th className="ui-table-th px-4 py-3">Prazo</th>
-              <th className="ui-table-th px-4 py-3">Progresso</th>
-              <th className="ui-table-th px-4 py-3">Status</th>
+              <th className="ui-table-th px-5 py-3 min-w-[360px]">Ação e descrição</th>
+              <th className="ui-table-th px-5 py-3 min-w-[220px]">Responsável</th>
+              <th className="ui-table-th px-5 py-3 min-w-[140px]">Prazo</th>
+              <th className="ui-table-th px-5 py-3 min-w-[160px]">Progresso</th>
+              <th className="ui-table-th px-5 py-3 min-w-[150px]">Status</th>
+              <th className="ui-table-th px-5 py-3 min-w-[140px]">Prioridade</th>
             </tr>
           </thead>
 
           <tbody className="ui-table-tbody divide-y divide-[#E6ECF5] text-sm text-[#0F172A]">
             {rows.length === 0 ? (
               <tr>
-                <td className="px-6 py-8 text-sm text-[#475569]" colSpan={5}>
+                <td className="px-5 py-8 text-sm text-[#475569]" colSpan={6}>
                   Nenhum plano de ação encontrado.
                 </td>
               </tr>
@@ -136,17 +138,19 @@ export default function ActionPlansTable({
                     key={r.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => router.push(`/action-plans/${r.id}`)}
+                    onMouseEnter={() => router.prefetch(detailHref(r.id))}
+                    onFocus={() => router.prefetch(detailHref(r.id))}
+                    onClick={() => router.push(detailHref(r.id))}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault()
-                        router.push(`/action-plans/${r.id}`)
+                        router.push(detailHref(r.id))
                       }
                     }}
                     aria-label={`Abrir plano de ação ${r.title}`}
                     className="cursor-pointer transition-colors hover:bg-[rgba(6,182,212,0.08)]"
                   >
-                    <td className="px-6 py-5">
+                    <td className="px-5 py-4">
                       <div className="max-w-[520px]">
                         <div className="mb-1 flex items-center gap-2">
                           <p className="font-bold text-[#0F172A]">{r.title}</p>
@@ -163,7 +167,7 @@ export default function ActionPlansTable({
                       </div>
                     </td>
 
-                    <td className="px-6 py-5">
+                    <td className="px-5 py-4">
                       <div className="flex items-center gap-2">
                         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(6,182,212,0.12)] text-xs font-bold text-[#06B6D4]">
                           {responsibleName === "—" ? "—" : initialsFromName(responsibleName)}
@@ -172,7 +176,7 @@ export default function ActionPlansTable({
                       </div>
                     </td>
 
-                    <td className="px-6 py-5">
+                    <td className="px-5 py-4">
                       <div
                         className={`flex items-center gap-1.5 text-xs ${
                           overdueRow ? "font-semibold text-[#EF4444]" : "text-[#475569]"
@@ -183,7 +187,7 @@ export default function ActionPlansTable({
                       </div>
                     </td>
 
-                    <td className="px-6 py-5">
+                    <td className="px-5 py-4">
                       <div className="w-full max-w-[140px]">
                         <div className="mb-1 flex items-center justify-between">
                           <span
@@ -209,7 +213,7 @@ export default function ActionPlansTable({
                       </div>
                     </td>
 
-                    <td className="px-6 py-5">
+                    <td className="px-5 py-4">
                       <span
                         className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-bold ${statusPill(
                           r.status
@@ -218,17 +222,17 @@ export default function ActionPlansTable({
                       >
                         {statusLabel(r.status)}
                       </span>
+                    </td>
 
-                      <div className="mt-2">
-                        <span
-                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold ${priorityPill(
-                            r.priority
-                          )}`}
-                          title={r.priority ?? ""}
-                        >
-                          {r.priority ?? "—"}
-                        </span>
-                      </div>
+                    <td className="px-5 py-4">
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold ${priorityPill(
+                          r.priority
+                        )}`}
+                        title={r.priority ?? ""}
+                      >
+                        {r.priority ?? "—"}
+                      </span>
                     </td>
                   </tr>
                 )

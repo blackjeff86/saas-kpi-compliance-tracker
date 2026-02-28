@@ -3,7 +3,7 @@
 
 import React, { useMemo } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { ChevronRight } from "lucide-react"
 import { usePageTitle } from "./contexts/PageTitleContext"
 
@@ -65,6 +65,7 @@ function buildBreadcrumb(pathname: string, pageTitle: string | null) {
 
 export default function AppHeader({ user }: { user: UserHeader }) {
   const pathname = usePathname() || "/dashboard"
+  const router = useRouter()
   const { title: pageTitle } = usePageTitle()
 
   const crumb = useMemo(() => buildBreadcrumb(pathname, pageTitle), [pathname, pageTitle])
@@ -85,7 +86,12 @@ export default function AppHeader({ user }: { user: UserHeader }) {
                     <li className="text-[#0F172A]">{c.label}</li>
                   ) : (
                     <li>
-                      <Link href={c.href} className="transition-colors hover:text-[#06B6D4]">
+                      <Link
+                        href={c.href}
+                        onMouseEnter={() => router.prefetch(c.href)}
+                        onFocus={() => router.prefetch(c.href)}
+                        className="transition-colors hover:text-[#06B6D4]"
+                      >
                         {c.label}
                       </Link>
                     </li>

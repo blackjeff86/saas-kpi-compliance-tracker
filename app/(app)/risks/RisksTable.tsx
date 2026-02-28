@@ -48,9 +48,12 @@ function statusBadge(v?: string | null) {
 export default function RisksTable({ rows, returnTo }: { rows: Row[]; returnTo?: string }) {
   const router = useRouter()
 
+  const detailHref = (id: string) => {
+    return returnTo ? `/risks/${id}?returnTo=${encodeURIComponent(returnTo)}` : `/risks/${id}`
+  }
+
   const go = (id: string) => {
-    const url = returnTo ? `/risks/${id}?returnTo=${encodeURIComponent(returnTo)}` : `/risks/${id}`
-    router.push(url)
+    router.push(detailHref(id))
   }
 
   return (
@@ -77,6 +80,8 @@ export default function RisksTable({ rows, returnTo }: { rows: Row[]; returnTo?:
               className="group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors"
               role="button"
               tabIndex={0}
+              onMouseEnter={() => router.prefetch(detailHref(r.id))}
+              onFocus={() => router.prefetch(detailHref(r.id))}
               onClick={() => go(r.id)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") go(r.id)

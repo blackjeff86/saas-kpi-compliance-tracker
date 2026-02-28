@@ -1,7 +1,6 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { formatDatePtBr } from "@/lib/utils"
 
 type Row = {
   id: string
@@ -30,8 +29,42 @@ function frameworkPill() {
   return "ui-badge-info"
 }
 
+function normalizeStatus(v?: string | null) {
+  const raw = (v || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+
+  if (!raw) return ""
+
+  if (
+    raw === "not_applicable" ||
+    raw === "not applicable" ||
+    raw === "not-applicable" ||
+    raw === "not_aplicable" ||
+    raw === "not aplicable" ||
+    raw === "not-aplicable" ||
+    raw === "nao aplicavel"
+  ) {
+    return "not_applicable"
+  }
+
+  if (raw === "needs changes") return "needs_changes"
+  if (raw === "under review") return "under_review"
+
+  return raw.replace(/\s+/g, "_")
+}
+
+function kpiStatusLabel(v?: string | null) {
+  const s = normalizeStatus(v)
+  if (!s) return "—"
+  if (s === "not_applicable") return "not_applicable"
+  return s
+}
+
 function kpiStatusBadge(v?: string | null) {
-  const s = (v || "").toLowerCase()
+  const s = normalizeStatus(v)
   if (
     s.includes("in_target") ||
     s.includes("in target") ||
@@ -47,7 +80,8 @@ function kpiStatusBadge(v?: string | null) {
     s.includes("yellow") ||
     s.includes("medium") ||
     s.includes("moderate") ||
-    s === "overdue"
+    s === "overdue" ||
+    s === "pending"
   )
     return "bg-amber-50 text-amber-700 border-amber-200"
   if (
@@ -66,27 +100,42 @@ function kpiStatusBadge(v?: string | null) {
 }
 
 function finalReviewBadge(v?: string | null) {
-  const s = (v || "").toLowerCase()
+  const s = normalizeStatus(v)
   if (s === "approved") return "bg-emerald-50 text-emerald-700 border-emerald-200"
   if (s === "needs_changes") return "bg-amber-50 text-amber-700 border-amber-200"
   if (s === "rejected") return "bg-red-50 text-red-700 border-red-200"
-  if (s === "under_review" || s === "submitted" || s === "pending") return "bg-slate-50 text-slate-700 border-slate-200"
+  if (s === "pending") return "bg-amber-50 text-amber-700 border-amber-200"
+  if (s === "under_review" || s === "submitted") return "bg-slate-50 text-slate-700 border-slate-200"
   if (s === "not_applicable" || s === "not-applicable") return "bg-slate-50 text-slate-700 border-slate-200"
   if (s === "overdue") return "bg-amber-50 text-amber-700 border-amber-200"
   return "bg-slate-50 text-slate-700 border-slate-200"
 }
 
 function finalReviewLabel(v?: string | null) {
-  const s = (v || "").toLowerCase()
-  if (s === "approved") return "Conforme"
-  if (s === "needs_changes") return "Em observação"
-  if (s === "rejected") return "Crítico"
-  if (s === "under_review") return "Em revisão"
-  if (s === "submitted") return "Aguardando revisão"
-  if (s === "not_applicable" || s === "not-applicable") return "Não aplicável"
-  if (s === "overdue") return "Overdue"
-  if (s === "pending") return "Pendente"
-  return "—"
+  const s = normalizeStatus(v)
+  if (!s) return "—"
+  if (s === "not_applicable") return "not_applicable"
+  return s
+}
+
+function formatDateDdMmYyyy(v?: string | null) {
+  if (!v) return "—"
+  const s = String(v).trim()
+
+  // Já vem do backend nesse formato em alguns cenários.
+  const ddMmYyyy = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  if (ddMmYyyy) return `${ddMmYyyy[1]}/${ddMmYyyy[2]}/${ddMmYyyy[3]}`
+
+  // ISO date/date-time -> dd/mm/aaaa.
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/)
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`
+
+  const d = new Date(s)
+  if (Number.isNaN(d.getTime())) return "—"
+  const dd = String(d.getDate()).padStart(2, "0")
+  const mm = String(d.getMonth() + 1).padStart(2, "0")
+  const yyyy = String(d.getFullYear())
+  return `${dd}/${mm}/${yyyy}`
 }
 
 export default function KpisTable({
@@ -100,13 +149,17 @@ export default function KpisTable({
 }) {
   const router = useRouter()
 
-  const go = (id: string) => {
+  const detailHref = (id: string) => {
     const params = new URLSearchParams()
     if (mes_ref) params.set("mes_ref", mes_ref)
     if (returnTo) params.set("returnTo", returnTo)
     params.set("from", "kpis")
     const qs = params.toString() ? `?${params.toString()}` : ""
-    router.push(`/kpis/${id}${qs}`)
+    return `/kpis/${id}${qs}`
+  }
+
+  const go = (id: string) => {
+    router.push(detailHref(id))
   }
 
   return (
@@ -150,6 +203,8 @@ export default function KpisTable({
                 className="group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors"
                 role="button"
                 tabIndex={0}
+                onMouseEnter={() => router.prefetch(detailHref(r.id))}
+                onFocus={() => router.prefetch(detailHref(r.id))}
                 onClick={() => go(r.id)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") go(r.id)
@@ -210,7 +265,7 @@ export default function KpisTable({
                       )}`}
                       title={`auto_status no mês ${r.mes_ref_used ?? mes_ref}`}
                     >
-                      {monthStatus}
+                      {kpiStatusLabel(monthStatus)}
                     </span>
                   ) : (
                     <span className="text-slate-500">—</span>
@@ -231,7 +286,7 @@ export default function KpisTable({
                   )}
                 </td>
                 <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
-                  {formatDatePtBr(r.next_execution_date)}
+                  {formatDateDdMmYyyy(r.next_execution_date)}
                 </td>
               </tr>
             )

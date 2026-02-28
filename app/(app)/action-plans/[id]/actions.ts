@@ -70,6 +70,7 @@ export type ActionPlanTimelineEvent = {
     | "task_completed"
     | "task_reopened"
     | "task_deleted"
+    | "update_added"
     | "plan_updated"
   task_title: string | null
   metadata: string | null
