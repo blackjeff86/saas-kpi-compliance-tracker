@@ -114,7 +114,7 @@ export default async function KpisPage(props: { searchParams?: Promise<SearchPar
 
         {/* Summary cards */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm min-h-[140px] flex flex-col">
             <div className="mb-3 flex items-center justify-between">
               <span className="rounded-lg bg-primary/10 p-2 text-primary">
                 <ClipboardList className="h-4 w-4" />
@@ -125,7 +125,7 @@ export default async function KpisPage(props: { searchParams?: Promise<SearchPar
             <p className="text-2xl font-bold text-slate-800 dark:text-white">{summary.total}</p>
           </div>
 
-          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm min-h-[140px] flex flex-col">
             <div className="mb-3 flex items-center justify-between">
               <span className="rounded-lg bg-emerald-100 dark:bg-emerald-900/30 p-2 text-emerald-700 dark:text-emerald-400">
                 <CheckCircle className="h-4 w-4" />
@@ -136,7 +136,7 @@ export default async function KpisPage(props: { searchParams?: Promise<SearchPar
             <p className="text-2xl font-bold text-slate-800 dark:text-white">{summary.green}</p>
           </div>
 
-          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm min-h-[140px] flex flex-col">
             <div className="mb-3 flex items-center justify-between">
               <span className="rounded-lg bg-amber-100 dark:bg-amber-900/30 p-2 text-amber-700 dark:text-amber-400">
                 <AlertTriangle className="h-4 w-4" />
@@ -147,7 +147,7 @@ export default async function KpisPage(props: { searchParams?: Promise<SearchPar
             <p className="text-2xl font-bold text-slate-800 dark:text-white">{summary.yellow}</p>
           </div>
 
-          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <div className="rounded-xl border border-primary/10 bg-white dark:bg-slate-900 p-5 shadow-sm min-h-[140px] flex flex-col">
             <div className="mb-3 flex items-center justify-between">
               <span className="rounded-lg bg-red-100 dark:bg-red-900/30 p-2 text-red-700 dark:text-red-400">
                 <XCircle className="h-4 w-4" />

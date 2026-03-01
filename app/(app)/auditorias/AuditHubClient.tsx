@@ -3,6 +3,7 @@
 
 import Link from "next/link"
 import { useMemo, useState } from "react"
+import { AlertTriangle, ClipboardList, Gauge, Hourglass } from "lucide-react"
 import type { AuditHubData, AuditHubCampaignRow } from "./actions"
 import TablePaginationFooter from "../components/TablePaginationFooter"
 
@@ -74,13 +75,23 @@ export default function AuditHubClient({ initialData }: Props) {
         <KpiCard
           label="Auditorias Ativas"
           value={`${initialData.kpis.active_count}`}
-          hint={initialData.kpis.active_delta_month >= 0 ? `+${initialData.kpis.active_delta_month} este mês` : `${initialData.kpis.active_delta_month} este mês`}
-          hintTone={initialData.kpis.active_delta_month >= 0 ? "ok" : "warn"}
+          badge={initialData.kpis.active_delta_month >= 0 ? `+${initialData.kpis.active_delta_month} este mês` : `${initialData.kpis.active_delta_month} este mês`}
+          badgeTone={initialData.kpis.active_delta_month >= 0 ? "ok" : "warn"}
+          icon={
+            <span className="rounded-lg bg-primary/10 p-2 text-primary">
+              <ClipboardList className="h-4 w-4" />
+            </span>
+          }
         />
         <KpiCard
           label="Progresso Médio"
           value={`${Math.round(initialData.kpis.avg_progress_pct)}%`}
-          right={
+          icon={
+            <span className="rounded-lg bg-blue-100 p-2 text-blue-700">
+              <Gauge className="h-4 w-4" />
+            </span>
+          }
+          footer={
             <div className="w-16 h-1.5 bg-slate-100 rounded-full mb-1.5">
               <div
                 className="h-full bg-primary rounded-full"
@@ -92,13 +103,25 @@ export default function AuditHubClient({ initialData }: Props) {
         <KpiCard
           label="Aguardando Validação"
           value={`${initialData.kpis.awaiting_validation}`}
-          right={<span className="text-amber-500">⏳</span>}
+          badge="Aguardando"
+          badgeTone="warn"
+          icon={
+            <span className="rounded-lg bg-amber-100 p-2 text-amber-700">
+              <Hourglass className="h-4 w-4" />
+            </span>
+          }
         />
         <KpiCard
           label="Prazos Vencidos"
           value={`${initialData.kpis.overdue_count}`}
           valueTone="danger"
-          right={<span className="text-red-500">⚠</span>}
+          badge="Atenção"
+          badgeTone="danger"
+          icon={
+            <span className="rounded-lg bg-red-100 p-2 text-red-700">
+              <AlertTriangle className="h-4 w-4" />
+            </span>
+          }
         />
       </div>
 
@@ -190,39 +213,41 @@ export default function AuditHubClient({ initialData }: Props) {
 function KpiCard({
   label,
   value,
-  hint,
-  hintTone,
+  badge,
+  badgeTone,
   valueTone,
-  right,
+  icon,
+  footer,
 }: {
   label: string
   value: string
-  hint?: string
-  hintTone?: "ok" | "warn"
+  badge?: string
+  badgeTone?: "ok" | "warn" | "danger"
   valueTone?: "danger"
-  right?: React.ReactNode
+  icon?: React.ReactNode
+  footer?: React.ReactNode
 }) {
   return (
-    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{label}</p>
-      <div className="flex items-end justify-between gap-3">
-        <span
-          className={clsx(
-            "text-2xl font-bold",
-            valueTone === "danger" ? "text-red-600" : "text-slate-900"
-          )}
-        >
-          {value}
-        </span>
-        <div className="flex flex-col items-end">
-          {right ? right : null}
-          {hint ? (
-            <span className={clsx("text-xs font-medium", hintTone === "ok" ? "text-green-600" : "text-slate-500")}>
-              {hint}
-            </span>
-          ) : null}
-        </div>
+    <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm min-h-[140px] flex flex-col">
+      <div className="mb-3 flex items-center justify-between">
+        {icon ? icon : <span className="rounded-lg bg-primary/10 p-2 text-primary" />}
+        {badge ? (
+          <span
+            className={clsx(
+              "text-xs font-bold",
+              badgeTone === "ok" && "text-emerald-700",
+              badgeTone === "warn" && "text-amber-700",
+              badgeTone === "danger" && "text-red-700",
+              !badgeTone && "text-slate-400"
+            )}
+          >
+            {badge}
+          </span>
+        ) : null}
       </div>
+      <p className="text-sm font-medium text-slate-500">{label}</p>
+      <p className={clsx("text-2xl font-bold text-slate-900", valueTone === "danger" && "text-red-600")}>{value}</p>
+      {footer ? <div className="mt-auto flex justify-end">{footer}</div> : null}
     </div>
   )
 }

@@ -109,7 +109,7 @@ export default async function ActionPlansPage(props: {
 
         {/* Summary cards */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <div className="rounded-xl border border-border bg-card p-5 shadow-sm min-h-[140px] flex flex-col">
             <div className="mb-3 flex items-center justify-between">
               <span className="rounded-lg bg-primary/10 p-2 text-primary">
                 <ClipboardList className="h-4 w-4" />
@@ -120,7 +120,7 @@ export default async function ActionPlansPage(props: {
             <p className="text-2xl font-bold text-text-primary">{total}</p>
           </div>
 
-          <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <div className="rounded-xl border border-border bg-card p-5 shadow-sm min-h-[140px] flex flex-col">
             <div className="mb-3 flex items-center justify-between">
               <span className="rounded-lg bg-risk-high/10 p-2 text-risk-high">
                 <Timer className="h-4 w-4" />
@@ -131,7 +131,7 @@ export default async function ActionPlansPage(props: {
             <p className="text-2xl font-bold text-text-primary">{inProgress}</p>
           </div>
 
-          <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <div className="rounded-xl border border-border bg-card p-5 shadow-sm min-h-[140px] flex flex-col">
             <div className="mb-3 flex items-center justify-between">
               <span className="rounded-lg bg-risk-critical/10 p-2 text-risk-critical">
                 <AlertTriangle className="h-4 w-4" />
@@ -142,7 +142,7 @@ export default async function ActionPlansPage(props: {
             <p className="text-2xl font-bold text-text-primary">{overdue}</p>
           </div>
 
-          <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <div className="rounded-xl border border-border bg-card p-5 shadow-sm min-h-[140px] flex flex-col">
             <div className="mb-3 flex items-center justify-between">
               <span className="rounded-lg bg-risk-low/10 p-2 text-risk-low">
                 <BadgeCheck className="h-4 w-4" />

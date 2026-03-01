@@ -5,6 +5,8 @@ import { sql } from "@vercel/postgres"
 import { getContext } from "../lib/context"
 import { getDashboardScope } from "../lib/authz"
 import { ensureTeamIdColumns } from "../lib/rbac-migrations"
+import { fetchControlsPage } from "../controles/actions"
+import type { ActionPlanListRow } from "../action-plans/actions-list"
 
 export type DashboardFilters = {
   frameworks: Array<{ id: string; name: string }>
@@ -25,22 +27,16 @@ export type DashboardSummary = {
     executions_pending_grc: number
     action_plans_open: number
     action_plans_overdue: number
+    controls_pending_execution: number
+    controls_overdue_execution: number
+    controls_not_applicable: number
   }
 
   executions_by_workflow: Array<{ workflow_status: string; count: number }>
   executions_by_auto: Array<{ auto_status: string; count: number }>
   action_plans_by_priority: Array<{ priority: string; count: number }>
 
-  action_plans_due_soon: Array<{
-    id: string
-    title: string
-    priority: string
-    status: string
-    due_date: string
-    execution_id: string
-    control_code: string | null
-    kpi_code: string | null
-  }>
+  action_plans_due_soon: ActionPlanListRow[]
 
   recent_executions: Array<{
     id: string
@@ -54,6 +50,16 @@ export type DashboardSummary = {
   }>
 
   performance_6m: Array<{ month: string; pct_in_target: number }>
+  performance_status_6m: Array<{
+    month_key: string
+    effective: number
+    warning: number
+    critical: number
+    pending: number
+    overdue: number
+    not_applicable: number
+    total: number
+  }>
   critical_controls: Array<{
     control_id: string
     control_code: string
@@ -77,10 +83,41 @@ function monthRange(year: number, month: number) {
   return { startDate: toDate(start), endDate: toDate(end) }
 }
 
+function toMonthRef(d: Date) {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`
+}
+
+async function ensureActionPlanTasksTable() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS action_plan_tasks (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id uuid NOT NULL,
+      action_plan_id uuid NOT NULL REFERENCES action_plans(id) ON DELETE CASCADE,
+      title text NOT NULL,
+      due_date date NULL,
+      priority text NULL,
+      responsible_name text NULL,
+      is_done boolean NOT NULL DEFAULT false,
+      done_at timestamptz NULL,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `
+}
+
+let ensureActionPlanTasksTablePromise: Promise<void> | null = null
+async function ensureActionPlanTasksTableOnce() {
+  if (!ensureActionPlanTasksTablePromise) {
+    ensureActionPlanTasksTablePromise = ensureActionPlanTasksTable()
+  }
+  await ensureActionPlanTasksTablePromise
+}
+
 export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<DashboardSummary> {
   const ctx = await getContext()
   const tenantId = ctx.tenantId
 
+  await ensureActionPlanTasksTableOnce()
   await ensureTeamIdColumns()
   const scope = await getDashboardScope(tenantId, ctx.userId)
   const teamIdsArr = scope.teamIds
@@ -339,10 +376,28 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
       (SELECT COUNT(*)::int FROM kpi_executions e JOIN controls c ON c.id = e.control_id
         WHERE e.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid)
           AND e.period_start >= ${startDate}::date AND e.period_start < ${endDate}::date) AS executions_total,
-      (SELECT COUNT(*)::int FROM kpi_executions e JOIN controls c ON c.id = e.control_id
-        WHERE e.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid)
-          AND e.period_start >= ${startDate}::date AND e.period_start < ${endDate}::date
-          AND e.workflow_status IN ('submitted','under_review','needs_changes')) AS executions_pending_grc,
+      (SELECT COUNT(*)::int
+       FROM kpi_executions e
+       JOIN controls c ON c.id = e.control_id
+       LEFT JOIN LATERAL (
+         SELECT gr.decision::text AS decision
+         FROM grc_reviews gr
+         WHERE gr.tenant_id = e.tenant_id
+           AND gr.execution_id = e.id
+         ORDER BY gr.created_at DESC
+         LIMIT 1
+       ) gr ON true
+       WHERE e.tenant_id = ${tenantId}
+         AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid)
+         AND e.period_start >= ${startDate}::date
+         AND e.period_start < ${endDate}::date
+         AND (
+           CASE lower(trim(COALESCE(gr.decision, e.grc_review_status::text, e.workflow_status::text, 'pending')))
+             WHEN 'in_review' THEN 'under_review'
+             ELSE lower(trim(COALESCE(gr.decision, e.grc_review_status::text, e.workflow_status::text, 'pending')))
+           END
+         ) IN ('pending', 'submitted', 'under_review')
+      ) AS executions_pending_grc,
       (SELECT COUNT(*)::int FROM action_plans ap WHERE ap.tenant_id = ${tenantId} AND ap.status::text <> 'done') AS action_plans_open,
       (SELECT COUNT(*)::int FROM action_plans ap WHERE ap.tenant_id = ${tenantId} AND ap.status::text <> 'done' AND ap.due_date IS NOT NULL AND ap.due_date < CURRENT_DATE) AS action_plans_overdue
     FROM (SELECT 1) t
@@ -353,9 +408,29 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
       (SELECT COUNT(*)::int FROM kpi_executions e JOIN controls c ON c.id = e.control_id
         WHERE e.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid) AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid)
           AND e.period_start >= ${startDate}::date AND e.period_start < ${endDate}::date) AS executions_total,
-      (SELECT COUNT(*)::int FROM kpi_executions e JOIN controls c ON c.id = e.control_id
-        WHERE e.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid) AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid)
-          AND e.period_start >= ${startDate}::date AND e.period_start < ${endDate}::date AND e.workflow_status IN ('submitted','under_review','needs_changes')) AS executions_pending_grc,
+      (SELECT COUNT(*)::int
+       FROM kpi_executions e
+       JOIN controls c ON c.id = e.control_id
+       LEFT JOIN LATERAL (
+         SELECT gr.decision::text AS decision
+         FROM grc_reviews gr
+         WHERE gr.tenant_id = e.tenant_id
+           AND gr.execution_id = e.id
+         ORDER BY gr.created_at DESC
+         LIMIT 1
+       ) gr ON true
+       WHERE e.tenant_id = ${tenantId}
+         AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid)
+         AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid)
+         AND e.period_start >= ${startDate}::date
+         AND e.period_start < ${endDate}::date
+         AND (
+           CASE lower(trim(COALESCE(gr.decision, e.grc_review_status::text, e.workflow_status::text, 'pending')))
+             WHEN 'in_review' THEN 'under_review'
+             ELSE lower(trim(COALESCE(gr.decision, e.grc_review_status::text, e.workflow_status::text, 'pending')))
+           END
+         ) IN ('pending', 'submitted', 'under_review')
+      ) AS executions_pending_grc,
       (SELECT COUNT(*)::int FROM action_plans ap WHERE ap.tenant_id = ${tenantId} AND (ap.team_id IS NULL OR ap.team_id = ${firstTeamId}::uuid) AND ap.status::text <> 'done') AS action_plans_open,
       (SELECT COUNT(*)::int FROM action_plans ap WHERE ap.tenant_id = ${tenantId} AND (ap.team_id IS NULL OR ap.team_id = ${firstTeamId}::uuid) AND ap.status::text <> 'done' AND ap.due_date IS NOT NULL AND ap.due_date < CURRENT_DATE) AS action_plans_overdue
     FROM (SELECT 1) t
@@ -365,9 +440,29 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
       (SELECT COUNT(*)::int FROM kpi_executions e JOIN controls c ON c.id = e.control_id
         WHERE e.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid) AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[]))
           AND e.period_start >= ${startDate}::date AND e.period_start < ${endDate}::date) AS executions_total,
-      (SELECT COUNT(*)::int FROM kpi_executions e JOIN controls c ON c.id = e.control_id
-        WHERE e.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid) AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[]))
-          AND e.period_start >= ${startDate}::date AND e.period_start < ${endDate}::date AND e.workflow_status IN ('submitted','under_review','needs_changes')) AS executions_pending_grc,
+      (SELECT COUNT(*)::int
+       FROM kpi_executions e
+       JOIN controls c ON c.id = e.control_id
+       LEFT JOIN LATERAL (
+         SELECT gr.decision::text AS decision
+         FROM grc_reviews gr
+         WHERE gr.tenant_id = e.tenant_id
+           AND gr.execution_id = e.id
+         ORDER BY gr.created_at DESC
+         LIMIT 1
+       ) gr ON true
+       WHERE e.tenant_id = ${tenantId}
+         AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid)
+         AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[]))
+         AND e.period_start >= ${startDate}::date
+         AND e.period_start < ${endDate}::date
+         AND (
+           CASE lower(trim(COALESCE(gr.decision, e.grc_review_status::text, e.workflow_status::text, 'pending')))
+             WHEN 'in_review' THEN 'under_review'
+             ELSE lower(trim(COALESCE(gr.decision, e.grc_review_status::text, e.workflow_status::text, 'pending')))
+           END
+         ) IN ('pending', 'submitted', 'under_review')
+      ) AS executions_pending_grc,
       (SELECT COUNT(*)::int FROM action_plans ap WHERE ap.tenant_id = ${tenantId} AND (ap.team_id IS NULL OR ap.team_id = ANY(${teamsArray}::uuid[])) AND ap.status::text <> 'done') AS action_plans_open,
       (SELECT COUNT(*)::int FROM action_plans ap WHERE ap.tenant_id = ${tenantId} AND (ap.team_id IS NULL OR ap.team_id = ANY(${teamsArray}::uuid[])) AND ap.status::text <> 'done' AND ap.due_date IS NOT NULL AND ap.due_date < CURRENT_DATE) AS action_plans_overdue
     FROM (SELECT 1) t
@@ -406,10 +501,129 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
   // =========================
   const dueSoonPromise =
     noScope
-      ? sql<{ id: string; title: string; priority: string; status: string; due_date: string; execution_id: string; control_code: string | null; kpi_code: string | null }>`SELECT ap.id, ap.title, ap.priority::text AS priority, ap.status::text AS status, ap.due_date::text AS due_date, ap.execution_id::text AS execution_id, c.control_code::text AS control_code, k.kpi_code::text AS kpi_code FROM action_plans ap LEFT JOIN controls c ON c.id = ap.control_id LEFT JOIN kpis k ON k.id = ap.kpi_id WHERE ap.tenant_id = ${tenantId} AND ap.status::text <> 'done' AND ap.due_date IS NOT NULL AND ap.due_date <= (CURRENT_DATE + INTERVAL '7 days')::date ORDER BY ap.due_date ASC, ap.priority DESC, ap.created_at DESC LIMIT 10`
+      ? sql<ActionPlanListRow>`
+    SELECT
+      ap.id::text AS id,
+      ap.title::text AS title,
+      ap.description::text AS description,
+      ap.responsible_name::text AS responsible_name,
+      CASE
+        WHEN COALESCE(tc.task_total, 0) > 0
+          THEN ROUND((COALESCE(tc.task_done, 0)::numeric * 100.0) / COALESCE(tc.task_total, 0))::int
+        WHEN ap.status::text = 'done' THEN 100
+        ELSE 0
+      END::int AS progress_percent,
+      ap.priority::text AS priority,
+      ap.status::text AS status,
+      ap.due_date::text AS due_date,
+      ap.execution_id::text AS execution_id,
+      c.control_code::text AS control_code,
+      k.kpi_code::text AS kpi_code,
+      e.auto_status::text AS auto_status,
+      e.workflow_status::text AS workflow_status,
+      ap.risk_id::text AS risk_id,
+      r.title::text AS risk_title,
+      r.classification::text AS risk_classification
+    FROM action_plans ap
+    LEFT JOIN kpi_executions e ON e.id = ap.execution_id AND e.tenant_id = ap.tenant_id
+    LEFT JOIN controls c ON c.id = ap.control_id AND c.tenant_id = ap.tenant_id
+    LEFT JOIN kpis k ON k.id = ap.kpi_id AND k.tenant_id = ap.tenant_id
+    LEFT JOIN risk_catalog r ON r.id = ap.risk_id AND r.tenant_id = ap.tenant_id
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*)::int AS task_total, SUM(CASE WHEN t.is_done THEN 1 ELSE 0 END)::int AS task_done
+      FROM action_plan_tasks t
+      WHERE t.tenant_id = ap.tenant_id AND t.action_plan_id = ap.id
+    ) tc ON true
+    WHERE ap.tenant_id = ${tenantId}
+      AND ap.status::text <> 'done'
+      AND ap.due_date IS NOT NULL
+      AND ap.due_date <= (CURRENT_DATE + INTERVAL '7 days')::date
+    ORDER BY ap.due_date ASC, ap.priority DESC, ap.created_at DESC
+    LIMIT 10
+  `
       : oneTeam
-        ? sql<{ id: string; title: string; priority: string; status: string; due_date: string; execution_id: string; control_code: string | null; kpi_code: string | null }>`SELECT ap.id, ap.title, ap.priority::text AS priority, ap.status::text AS status, ap.due_date::text AS due_date, ap.execution_id::text AS execution_id, c.control_code::text AS control_code, k.kpi_code::text AS kpi_code FROM action_plans ap LEFT JOIN controls c ON c.id = ap.control_id LEFT JOIN kpis k ON k.id = ap.kpi_id WHERE ap.tenant_id = ${tenantId} AND (ap.team_id IS NULL OR ap.team_id = ${firstTeamId}::uuid) AND ap.status::text <> 'done' AND ap.due_date IS NOT NULL AND ap.due_date <= (CURRENT_DATE + INTERVAL '7 days')::date ORDER BY ap.due_date ASC, ap.priority DESC, ap.created_at DESC LIMIT 10`
-        : sql<{ id: string; title: string; priority: string; status: string; due_date: string; execution_id: string; control_code: string | null; kpi_code: string | null }>`SELECT ap.id, ap.title, ap.priority::text AS priority, ap.status::text AS status, ap.due_date::text AS due_date, ap.execution_id::text AS execution_id, c.control_code::text AS control_code, k.kpi_code::text AS kpi_code FROM action_plans ap LEFT JOIN controls c ON c.id = ap.control_id LEFT JOIN kpis k ON k.id = ap.kpi_id WHERE ap.tenant_id = ${tenantId} AND (ap.team_id IS NULL OR ap.team_id = ANY(${teamsArray}::uuid[])) AND ap.status::text <> 'done' AND ap.due_date IS NOT NULL AND ap.due_date <= (CURRENT_DATE + INTERVAL '7 days')::date ORDER BY ap.due_date ASC, ap.priority DESC, ap.created_at DESC LIMIT 10`
+        ? sql<ActionPlanListRow>`
+    SELECT
+      ap.id::text AS id,
+      ap.title::text AS title,
+      ap.description::text AS description,
+      ap.responsible_name::text AS responsible_name,
+      CASE
+        WHEN COALESCE(tc.task_total, 0) > 0
+          THEN ROUND((COALESCE(tc.task_done, 0)::numeric * 100.0) / COALESCE(tc.task_total, 0))::int
+        WHEN ap.status::text = 'done' THEN 100
+        ELSE 0
+      END::int AS progress_percent,
+      ap.priority::text AS priority,
+      ap.status::text AS status,
+      ap.due_date::text AS due_date,
+      ap.execution_id::text AS execution_id,
+      c.control_code::text AS control_code,
+      k.kpi_code::text AS kpi_code,
+      e.auto_status::text AS auto_status,
+      e.workflow_status::text AS workflow_status,
+      ap.risk_id::text AS risk_id,
+      r.title::text AS risk_title,
+      r.classification::text AS risk_classification
+    FROM action_plans ap
+    LEFT JOIN kpi_executions e ON e.id = ap.execution_id AND e.tenant_id = ap.tenant_id
+    LEFT JOIN controls c ON c.id = ap.control_id AND c.tenant_id = ap.tenant_id
+    LEFT JOIN kpis k ON k.id = ap.kpi_id AND k.tenant_id = ap.tenant_id
+    LEFT JOIN risk_catalog r ON r.id = ap.risk_id AND r.tenant_id = ap.tenant_id
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*)::int AS task_total, SUM(CASE WHEN t.is_done THEN 1 ELSE 0 END)::int AS task_done
+      FROM action_plan_tasks t
+      WHERE t.tenant_id = ap.tenant_id AND t.action_plan_id = ap.id
+    ) tc ON true
+    WHERE ap.tenant_id = ${tenantId}
+      AND (ap.team_id IS NULL OR ap.team_id = ${firstTeamId}::uuid)
+      AND ap.status::text <> 'done'
+      AND ap.due_date IS NOT NULL
+      AND ap.due_date <= (CURRENT_DATE + INTERVAL '7 days')::date
+    ORDER BY ap.due_date ASC, ap.priority DESC, ap.created_at DESC
+    LIMIT 10
+  `
+        : sql<ActionPlanListRow>`
+    SELECT
+      ap.id::text AS id,
+      ap.title::text AS title,
+      ap.description::text AS description,
+      ap.responsible_name::text AS responsible_name,
+      CASE
+        WHEN COALESCE(tc.task_total, 0) > 0
+          THEN ROUND((COALESCE(tc.task_done, 0)::numeric * 100.0) / COALESCE(tc.task_total, 0))::int
+        WHEN ap.status::text = 'done' THEN 100
+        ELSE 0
+      END::int AS progress_percent,
+      ap.priority::text AS priority,
+      ap.status::text AS status,
+      ap.due_date::text AS due_date,
+      ap.execution_id::text AS execution_id,
+      c.control_code::text AS control_code,
+      k.kpi_code::text AS kpi_code,
+      e.auto_status::text AS auto_status,
+      e.workflow_status::text AS workflow_status,
+      ap.risk_id::text AS risk_id,
+      r.title::text AS risk_title,
+      r.classification::text AS risk_classification
+    FROM action_plans ap
+    LEFT JOIN kpi_executions e ON e.id = ap.execution_id AND e.tenant_id = ap.tenant_id
+    LEFT JOIN controls c ON c.id = ap.control_id AND c.tenant_id = ap.tenant_id
+    LEFT JOIN kpis k ON k.id = ap.kpi_id AND k.tenant_id = ap.tenant_id
+    LEFT JOIN risk_catalog r ON r.id = ap.risk_id AND r.tenant_id = ap.tenant_id
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*)::int AS task_total, SUM(CASE WHEN t.is_done THEN 1 ELSE 0 END)::int AS task_done
+      FROM action_plan_tasks t
+      WHERE t.tenant_id = ap.tenant_id AND t.action_plan_id = ap.id
+    ) tc ON true
+    WHERE ap.tenant_id = ${tenantId}
+      AND (ap.team_id IS NULL OR ap.team_id = ANY(${teamsArray}::uuid[]))
+      AND ap.status::text <> 'done'
+      AND ap.due_date IS NOT NULL
+      AND ap.due_date <= (CURRENT_DATE + INTERVAL '7 days')::date
+    ORDER BY ap.due_date ASC, ap.priority DESC, ap.created_at DESC
+    LIMIT 10
+  `
 
   // =========================
   // Execuções recentes (período + framework)
@@ -432,32 +646,137 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
         : sql<{ month: string; pct_in_target: number }>`WITH months AS (SELECT generate_series(date_trunc('month', CURRENT_DATE) - interval '5 months', date_trunc('month', CURRENT_DATE), interval '1 month')::date AS month_start), agg AS (SELECT date_trunc('month', e.period_start)::date AS month_start, COUNT(*)::int AS total, SUM(CASE WHEN e.auto_status::text = 'in_target' THEN 1 ELSE 0 END)::int AS ok FROM kpi_executions e JOIN controls c ON c.id = e.control_id WHERE e.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid) AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[])) AND e.period_start >= (date_trunc('month', CURRENT_DATE) - interval '5 months')::date GROUP BY 1) SELECT to_char(m.month_start, 'Mon')::text AS month, COALESCE(ROUND((a.ok::numeric / NULLIF(a.total,0)) * 100, 0), 0)::int AS pct_in_target FROM months m LEFT JOIN agg a ON a.month_start = m.month_start ORDER BY m.month_start ASC`
 
   // =========================
-  // Controles críticos + framework
+  // Gráfico 6 meses (status de controles por mês)
+  // Sempre usa últimos 6 meses a partir de hoje, independente do filtro de mês/ano
+  // Fonte: dados reais inseridos no banco (via fetchControlsPage)
   // =========================
-  const criticalPromise =
-    noScope
-      ? sql<{ control_id: string; control_code: string; control_name: string; owner_name: string | null; workflow_status: string | null; due_date: string | null }>`
-    WITH latest_exec AS (SELECT DISTINCT ON (e.control_id) e.control_id, e.workflow_status::text AS workflow_status, e.due_date::text AS due_date FROM kpi_executions e WHERE e.tenant_id = ${tenantId} ORDER BY e.control_id, e.period_end DESC NULLS LAST, e.created_at DESC)
-    SELECT c.id::text AS control_id, c.control_code::text AS control_code, c.name::text AS control_name, u.name::text AS owner_name, le.workflow_status::text AS workflow_status, le.due_date::text AS due_date
-    FROM controls c JOIN risks r ON r.id = c.risk_id LEFT JOIN users u ON u.id = c.owner_user_id LEFT JOIN latest_exec le ON le.control_id = c.id
-    WHERE c.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid) AND r.classification::text IN ('high','critical')
-    ORDER BY c.updated_at DESC LIMIT 10
-  `
-      : oneTeam
-        ? sql<{ control_id: string; control_code: string; control_name: string; owner_name: string | null; workflow_status: string | null; due_date: string | null }>`
-    WITH latest_exec AS (SELECT DISTINCT ON (e.control_id) e.control_id, e.workflow_status::text AS workflow_status, e.due_date::text AS due_date FROM kpi_executions e WHERE e.tenant_id = ${tenantId} ORDER BY e.control_id, e.period_end DESC NULLS LAST, e.created_at DESC)
-    SELECT c.id::text AS control_id, c.control_code::text AS control_code, c.name::text AS control_name, u.name::text AS owner_name, le.workflow_status::text AS workflow_status, le.due_date::text AS due_date
-    FROM controls c JOIN risks r ON r.id = c.risk_id LEFT JOIN users u ON u.id = c.owner_user_id LEFT JOIN latest_exec le ON le.control_id = c.id
-    WHERE c.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid) AND (c.team_id IS NULL OR c.team_id = ${firstTeamId}::uuid) AND r.classification::text IN ('high','critical')
-    ORDER BY c.updated_at DESC LIMIT 10
-  `
-        : sql<{ control_id: string; control_code: string; control_name: string; owner_name: string | null; workflow_status: string | null; due_date: string | null }>`
-    WITH latest_exec AS (SELECT DISTINCT ON (e.control_id) e.control_id, e.workflow_status::text AS workflow_status, e.due_date::text AS due_date FROM kpi_executions e WHERE e.tenant_id = ${tenantId} ORDER BY e.control_id, e.period_end DESC NULLS LAST, e.created_at DESC)
-    SELECT c.id::text AS control_id, c.control_code::text AS control_code, c.name::text AS control_name, u.name::text AS owner_name, le.workflow_status::text AS workflow_status, le.due_date::text AS due_date
-    FROM controls c JOIN risks r ON r.id = c.risk_id LEFT JOIN users u ON u.id = c.owner_user_id LEFT JOIN latest_exec le ON le.control_id = c.id
-    WHERE c.tenant_id = ${tenantId} AND (${frameworkId}::uuid IS NULL OR c.framework_id = ${frameworkId}::uuid) AND (c.team_id IS NULL OR c.team_id = ANY(${teamsArray}::uuid[])) AND r.classification::text IN ('high','critical')
-    ORDER BY c.updated_at DESC LIMIT 10
-  `
+  const perfStatusPromise = (async () => {
+    let frameworkName = ""
+    if (frameworkId) {
+      const fwRes = await sql<{ name: string }>`
+        SELECT name::text AS name
+        FROM frameworks
+        WHERE tenant_id = ${tenantId}
+          AND id = ${frameworkId}::uuid
+        LIMIT 1
+      `
+      frameworkName = fwRes.rows[0]?.name ?? ""
+    }
+
+    const now = new Date()
+    const monthRefs: string[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(Date.UTC(now.getFullYear(), now.getMonth() - i, 1))
+      monthRefs.push(toMonthRef(d))
+    }
+
+    const rows = await Promise.all(
+      monthRefs.map(async (mes_ref) => {
+        const page = await fetchControlsPage({
+          mes_ref,
+          framework: frameworkName,
+          limit: 0,
+        })
+
+        let effective = 0
+        let warning = 0
+        let critical = 0
+        let pending = 0
+        let overdue = 0
+        let not_applicable = 0
+
+        for (const row of page.rows) {
+          const s = String(row.control_result ?? row.control_result_suggested ?? "pending").toLowerCase()
+          if (s === "effective") effective++
+          else if (s === "warning") warning++
+          else if (s === "critical") critical++
+          else if (s === "overdue") overdue++
+          else if (s === "not_applicable") not_applicable++
+          else pending++
+        }
+
+        return {
+          month_key: mes_ref,
+          effective,
+          warning,
+          critical,
+          pending,
+          overdue,
+          not_applicable,
+          total: page.rows.length,
+        }
+      })
+    )
+
+    return { rows }
+  })()
+
+  // =========================
+  // Controles críticos: resultado mês = Critical (via fetchControlsPage, mesmo critério da tabela Controles)
+  // =========================
+  const criticalPromise = (async () => {
+    let frameworkName = ""
+    if (frameworkId) {
+      const fwRes = await sql<{ name: string }>`
+        SELECT name::text AS name FROM frameworks
+        WHERE tenant_id = ${tenantId} AND id = ${frameworkId}::uuid LIMIT 1
+      `
+      frameworkName = fwRes.rows[0]?.name ?? ""
+    }
+    const mesRef = `${year}-${String(month).padStart(2, "0")}`
+    const page = await fetchControlsPage({
+      mes_ref: mesRef,
+      framework: frameworkName,
+      resultado: "critical",
+      limit: 10,
+      offset: 0,
+    })
+    return page.rows.map((r) => ({
+      control_id: r.id,
+      control_code: r.control_code,
+      control_name: r.name,
+      owner_name: r.control_owner_name,
+      status_label: "Critical",
+      status_kind: "danger" as const,
+    }))
+  })()
+
+  // =========================
+  // Pendências do card do topo (mesma lógica da tabela Controles: resultado sugerido)
+  // =========================
+  const executionPendenciesPromise = (async () => {
+    let frameworkName = ""
+    if (frameworkId) {
+      const fwRes = await sql<{ name: string }>`
+        SELECT name::text AS name
+        FROM frameworks
+        WHERE tenant_id = ${tenantId}
+          AND id = ${frameworkId}::uuid
+        LIMIT 1
+      `
+      frameworkName = fwRes.rows[0]?.name ?? ""
+    }
+
+    const mesRef = `${year}-${String(month).padStart(2, "0")}`
+    const page = await fetchControlsPage({
+      mes_ref: mesRef,
+      framework: frameworkName,
+      limit: 0,
+    })
+
+    let controls_pending_execution = 0
+    let controls_overdue_execution = 0
+    let controls_not_applicable = 0
+
+    for (const row of page.rows) {
+      const s = String(row.control_result_suggested ?? "pending").toLowerCase()
+      if (s === "overdue") controls_overdue_execution++
+      else if (s === "not_applicable") controls_not_applicable++
+      else if (s === "pending") controls_pending_execution++
+    }
+
+    return { controls_pending_execution, controls_overdue_execution, controls_not_applicable }
+  })()
 
   const [
     frameworksRes,
@@ -469,7 +788,9 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
     dueSoonRes,
     recentExecRes,
     perfRes,
+    perfStatusRes,
     criticalRes,
+    executionPendenciesRes,
   ] = await Promise.all([
     frameworksPromise,
     cardsPromise,
@@ -480,7 +801,9 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
     dueSoonPromise,
     recentExecPromise,
     perfPromise,
+    perfStatusPromise,
     criticalPromise,
+    executionPendenciesPromise,
   ])
 
   const filters: DashboardFilters = { frameworks: frameworksRes.rows }
@@ -490,50 +813,20 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
     controls_critical: 0,
     kpis_out_of_target: 0,
   }
-  const counts = countsRes.rows[0] ?? {
+  const countsBase = countsRes.rows[0] ?? {
     executions_total: 0,
     executions_pending_grc: 0,
     action_plans_open: 0,
     action_plans_overdue: 0,
   }
+  const counts = {
+    ...countsBase,
+    controls_pending_execution: executionPendenciesRes.controls_pending_execution,
+    controls_overdue_execution: executionPendenciesRes.controls_overdue_execution,
+    controls_not_applicable: executionPendenciesRes.controls_not_applicable,
+  }
 
-  const today0 = new Date()
-  today0.setHours(0, 0, 0, 0)
-
-  const critical_controls = criticalRes.rows.map((row) => {
-    const wf = (row.workflow_status || "").toLowerCase()
-    const due = row.due_date ? new Date(row.due_date) : null
-    const overdue = due ? due.getTime() < today0.getTime() : false
-
-    let status_label = "—"
-    let status_kind: "danger" | "warning" | "info" | "neutral" = "neutral"
-
-    if (overdue && (wf === "draft" || wf === "in_progress" || wf === "needs_changes")) {
-      status_label = "Vencido"
-      status_kind = "danger"
-    } else if (wf === "under_review") {
-      status_label = "Em Revisão"
-      status_kind = "warning"
-    } else if (wf === "submitted") {
-      status_label = "Aguardando Evidência"
-      status_kind = "info"
-    } else if (wf === "approved") {
-      status_label = "OK"
-      status_kind = "neutral"
-    } else if (wf) {
-      status_label = row.workflow_status as string
-      status_kind = "neutral"
-    }
-
-    return {
-      control_id: row.control_id,
-      control_code: row.control_code,
-      control_name: row.control_name,
-      owner_name: row.owner_name,
-      status_label,
-      status_kind,
-    }
-  })
+  const critical_controls = criticalRes
 
   return {
     filters,
@@ -545,6 +838,7 @@ export async function fetchDashboardSummary(q: DashboardQuery = {}): Promise<Das
     action_plans_due_soon: dueSoonRes.rows,
     recent_executions: recentExecRes.rows,
     performance_6m: perfRes.rows,
+    performance_status_6m: perfStatusRes.rows,
     critical_controls,
   }
 }
